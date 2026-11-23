@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["AGENTS.md"],
+  "commands": {
+    "verify": {
+      "description": "型チェック・lint・ユニットテスト・ビルドをまとめて実行",
+      "template": "Run the full local verification suite: `pnpm typecheck`, `pnpm lint`, `pnpm test`, and `pnpm build`. Fix every failure. Then summarize what changed and any remaining risk.",
+    },
+    "rules-check": {
+      "description": "ルール実装と docs/denki_isu_game_rules.md の整合性を確認",
+      "template": "Compare src/game/*.ts with docs/denki_isu_game_rules.md line by line. List every mismatch (points, chair reuse, 40-point win, 3 shocks, 8-turn limit, turn order) and add or fix tests for each. Do not change docs unless the docs are internally inconsistent.",
+    },
+    "playtest": {
+      "description": "ボット同士の自動対戦を実行し、ルールの破綻を探す",
+      "template": "Run `pnpm simulate --matches 1000 --seed 1` and analyze the output. Look for invalid states, infinite loops, impossible scores, duplicated chairs, and turn-count violations. Add regression tests for anything suspicious.",
+    },
+  },
+}

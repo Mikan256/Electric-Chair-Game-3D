@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+dist-ssr/
+coverage/
+playwright-report/
+test-results/
+
+# Local env
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+.idea/
+
+# Logs
+*.log
+logs/
+
+# OpenCode / agent scratch
+/.opencode/cache/
+/.opencode/tmp/
+
+# Legacy Unity project (kept in-tree as read-only source material; assets are
+# copied into public/assets by `pnpm assets:sync`).
+Electric-Chair-Game/
+
+# Generated asset manifest is committed, but the large asset mirror is not
+# required for a cold clone if the sync script is available.
+# public/assets/

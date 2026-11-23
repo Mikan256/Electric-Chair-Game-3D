@@ -1,0 +1,255 @@
+{
+  "generatedAt": "2026-11-23T15:39:42.750Z",
+  "assets": {
+    "models/chair-01.fbx": {
+      "source": "Electric-Chair-Game/Assets/Object/Chair/Block1.fbx",
+      "bytes": 26540,
+      "sha256": "c7aa205fc7c69dad15ae3ff77ad8d5aa0a049893ee19bfe5ca4eae0f7722ab04"
+    },
+    "models/chair-02.fbx": {
+      "source": "Electric-Chair-Game/Assets/Object/Chair/Block2.fbx",
+      "bytes": 34556,
+      "sha256": "b41d245c735809b10861fc64edde6789aaecc554e10788af94533e7c9ac26294"
+    },
+    "models/chair-03.fbx": {
+      "source": "Electric-Chair-Game/Assets/Object/Chair/Block3.fbx",
+      "bytes": 40236,
+      "sha256": "303a346d8ca07a310c3cd8f625a8f3a126936a749b02a78b133b6053c3e793d4"
+    },
+    "models/chair-04.fbx": {
+      "source": "Electric-Chair-Game/Assets/Object/Chair/Block4.fbx",
+      "bytes": 27436,
+      "sha256": "54d59a334c374945f585b587b7bccf61646822bc9388ef2f311c811d717accc7"
+    },
+    "models/chair-05.fbx": {
+      "source": "Electric-Chair-Game/Assets/Object/Chair/Block5.fbx",
+      "bytes": 33724,
+      "sha256": "001106fdc94c189835d585abb90e20197ef63c35240c2ccbf92c1d6664d834e8"
+    },
+    "models/chair-06.fbx": {
+      "source": "Electric-Chair-Game/Assets/Object/Chair/Block6.fbx",
+      "bytes": 37884,
+      "sha256": "452381e39314fcaf6b407f1930cfff7f1b81a29e8ea9a5a1ac5fca1aeffa8662"
+    },
+    "models/chair-07.fbx": {
+      "source": "Electric-Chair-Game/Assets/Object/Chair/Block7.fbx",
+      "bytes": 26636,
+      "sha256": "262bffdc01656a068e659b859c8f24dba2fa3b771ebfcab9c322c6b44066799d"
+    },
+    "models/chair-08.fbx": {
+      "source": "Electric-Chair-Game/Assets/Object/Chair/Block8.fbx",
+      "bytes": 44268,
+      "sha256": "4a432f843edf01d8d0d257acb52532277a763e7901061f4790ebcdb3773f484e"
+    },
+    "models/chair-09.fbx": {
+      "source": "Electric-Chair-Game/Assets/Object/Chair/Block9.fbx",
+      "bytes": 39020,
+      "sha256": "9965cb6dfccf1259bb0aad90603648096b7f0956bc1e44da7250b944e227ea5a"
+    },
+    "models/chair-10.fbx": {
+      "source": "Electric-Chair-Game/Assets/Object/Chair/Block10.fbx",
+      "bytes": 35212,
+      "sha256": "93783a48caf76d83c50699fdf0334091c12a8ef552516b31e7456a66d75ef827"
+    },
+    "models/chair-11.fbx": {
+      "source": "Electric-Chair-Game/Assets/Object/Chair/Block11.fbx",
+      "bytes": 26652,
+      "sha256": "e7736ca214d3bce4be7135b36b555357e991b6ddcdd3d248f988923afaa4d70f"
+    },
+    "models/chair-12.fbx": {
+      "source": "Electric-Chair-Game/Assets/Object/Chair/Block12.fbx",
+      "bytes": 34844,
+      "sha256": "372a04c096323e33c06b1149ac4ec8e6983346e8351e6a00f3b91dd531a36adb"
+    },
+    "models/pedestal.fbx": {
+      "source": "Electric-Chair-Game/Assets/Object/その他/台座.fbx",
+      "bytes": 28572,
+      "sha256": "27d9425aa9715ee89b95ec4bc1da27071816967b99e199f6f6b3e10e6c1e4082"
+    },
+    "models/avatar.vrm": {
+      "source": "Electric-Chair-Game/Assets/Object/その他/電気椅子ゲーム.vrm",
+      "bytes": 15647416,
+      "sha256": "93e37d760478191786368c77af0974e45d543e6a4c2e4304c6af9e22566c448b"
+    },
+    "textures/logo.png": {
+      "source": "Electric-Chair-Game/Assets/Image/電気椅子ゲーム.png",
+      "bytes": 18838,
+      "sha256": "3ded2e68fbee436bd2eab2e7b4bf0c8a0b12811e73930d2ed5a3f3556d9cea8d"
+    },
+    "textures/logo-en.png": {
+      "source": "Electric-Chair-Game/Assets/Image/Electric Chair Game.png",
+      "bytes": 200546,
+      "sha256": "c62c8bac46b1ce3146410a73af2a616cdd7941c5af0d8796ded722567dc024f6"
+    },
+    "textures/clock.png": {
+      "source": "Electric-Chair-Game/Assets/Image/時計.png",
+      "bytes": 74015,
+      "sha256": "83ba00235ec0105f7e3b0404a024dff286895941238d1627df00c6c0baecf9d3"
+    },
+    "textures/emblem.png": {
+      "source": "Electric-Chair-Game/Assets/Image/3606116_l-Photoroom.png",
+      "bytes": 234168,
+      "sha256": "e601791bbe495717602224bc8506677e48fa70151ae346b8657d3f8ab3d75b9b"
+    },
+    "textures/studio-logo.png": {
+      "source": "Electric-Chair-Game/Assets/Image/danball_mikan_box.png",
+      "bytes": 10892,
+      "sha256": "a179dff0c957b33b32f2b785bb6b1fc83f5759cff6ff33d4e8d6cf8371995856"
+    },
+    "textures/mikan.png": {
+      "source": "Electric-Chair-Game/Assets/Image/mikan.png",
+      "bytes": 3709,
+      "sha256": "f863e4034d03321a703af145b0f750dbdc0446294747b01ae2c5460683982dbf"
+    },
+    "textures/lightning/bolt.png": {
+      "source": "Electric-Chair-Game/Assets/LightningBolt/Textures/LightningBoltTexture.png",
+      "bytes": 16074,
+      "sha256": "521df04ec4bb8bd14f3c16d4c0bb3d8b358f2417c524164c5466c877dde182d3"
+    },
+    "textures/lightning/sheet-1.png": {
+      "source": "Electric-Chair-Game/Assets/LightningBolt/Textures/LightningSpriteSheet1.png",
+      "bytes": 317155,
+      "sha256": "f62b63e2efe6cd96ef6089d309fb100423a8076498c53dc17605114a4de1ac6b"
+    },
+    "textures/lightning/sheet-2.png": {
+      "source": "Electric-Chair-Game/Assets/LightningBolt/Textures/LightningSpriteSheet2.png",
+      "bytes": 110203,
+      "sha256": "d3fd2ebe5db3a0c62d647bb1f5c649b69314480d14d8f890a589e12b5067e0e5"
+    },
+    "textures/lightning/fx-cc.png": {
+      "source": "Electric-Chair-Game/Assets/FX_Kandol_Pack/FX_lightning_II/Textures/fx_lightning_cc.png",
+      "bytes": 84569,
+      "sha256": "0cbc07c7962fcb7477f73b809cf272b6d68a6fa779024adbff72fdbab7cd327c"
+    },
+    "textures/lightning/fx-ee.png": {
+      "source": "Electric-Chair-Game/Assets/FX_Kandol_Pack/FX_lightning_II/Textures/fx_lightning_ee_c.png",
+      "bytes": 57373,
+      "sha256": "4ce43a66417ab148b0d2d9d9d796a9428754b6c3677fdca7ab42ee643363b107"
+    },
+    "textures/lightning/fx-ff.png": {
+      "source": "Electric-Chair-Game/Assets/FX_Kandol_Pack/FX_lightning_II/Textures/fx_lightning_ff_a.png",
+      "bytes": 47764,
+      "sha256": "51f5ed17a9ede3e8ec81f1b77ff879be651e21afb9046a1398dd3636ae972c70"
+    },
+    "textures/lightning/fx-gg.png": {
+      "source": "Electric-Chair-Game/Assets/FX_Kandol_Pack/FX_lightning_II/Textures/fx_lightning_gg_a.png",
+      "bytes": 52836,
+      "sha256": "503f0c127cc383e1ae6db3b0fe018db66de90e00c104de5569c6d572c215dad6"
+    },
+    "textures/lightning/fx-line-a.png": {
+      "source": "Electric-Chair-Game/Assets/FX_Kandol_Pack/FX_lightning_II/Textures/fx_lightning_line_a.png",
+      "bytes": 331497,
+      "sha256": "6bb4fe984c11259e17f479116732194f0ab45201022609b348d7dacfe5d46b6a"
+    },
+    "textures/lightning/fx-line-c.png": {
+      "source": "Electric-Chair-Game/Assets/FX_Kandol_Pack/FX_lightning_II/Textures/fx_lightning_line_c.png",
+      "bytes": 177350,
+      "sha256": "c7d7379fcf02e13c4aeb2317486bb666bb2657cc79927d8979cf1f7efe3127d7"
+    },
+    "textures/lightning/fx-line-d.png": {
+      "source": "Electric-Chair-Game/Assets/FX_Kandol_Pack/FX_lightning_II/Textures/fx_lightning_line_d.png",
+      "bytes": 182137,
+      "sha256": "4260830a3c4a13b1a30b1c1618665887b008c8ca495885e8b97721d7eae3abb4"
+    },
+    "textures/lightning/fx-ll.png": {
+      "source": "Electric-Chair-Game/Assets/FX_Kandol_Pack/FX_lightning_II/Textures/fx_lightning_ll.png",
+      "bytes": 279425,
+      "sha256": "7c13f5b2712ce6c1502d9447f849153a99c4938fe68d0a1b12ce7825b7abc7db"
+    },
+    "textures/lightning/fx-mm.png": {
+      "source": "Electric-Chair-Game/Assets/FX_Kandol_Pack/FX_lightning_II/Textures/fx_lightning_mm.png",
+      "bytes": 279840,
+      "sha256": "d7abcdbeea49796809bd09aff4b490ea4f4a7031315e6925401dd9c93a71906d"
+    },
+    "textures/lightning/fx-nn.png": {
+      "source": "Electric-Chair-Game/Assets/FX_Kandol_Pack/FX_lightning_II/Textures/fx_lightning_nn.png",
+      "bytes": 244197,
+      "sha256": "089e1445e665af3d7b55884a8fc4f42bd5b8f43454520c11a985b922f1db7202"
+    },
+    "textures/lightning/fx-oo.png": {
+      "source": "Electric-Chair-Game/Assets/FX_Kandol_Pack/FX_lightning_II/Textures/fx_lightning_oo.png",
+      "bytes": 229742,
+      "sha256": "7b7cc59bc42535950a2058b55314fed30d7e33af919741166d064957c94ef270"
+    },
+    "textures/lightning/fx-pp.png": {
+      "source": "Electric-Chair-Game/Assets/FX_Kandol_Pack/FX_lightning_II/Textures/fx_lightning_pp.png",
+      "bytes": 108731,
+      "sha256": "141572fa447016bf5da8948a15c958b085991186abb333e4a8f850911ae9b6ea"
+    },
+    "textures/ui/window.png": {
+      "source": "Electric-Chair-Game/Assets/Sci-Fi UI/_SciFi_GUISkin_/Skin_Assets/window/window_transparent.png",
+      "bytes": 64290,
+      "sha256": "9eb2fb7bd2a0decdd8ae99a237b376404fd3f088bc0aaeb636501292ede0e31a"
+    },
+    "textures/ui/button.png": {
+      "source": "Electric-Chair-Game/Assets/Sci-Fi UI/_SciFi_GUISkin_/Skin_Assets/buttons/button1.png",
+      "bytes": 30534,
+      "sha256": "ea63583857027f444a24f06215d61b933b4c2b36c1308b1db051ba3fd7e334f6"
+    },
+    "textures/ui/button-active.png": {
+      "source": "Electric-Chair-Game/Assets/Sci-Fi UI/_SciFi_GUISkin_/Skin_Assets/buttons/button_active.png",
+      "bytes": 33695,
+      "sha256": "32c572c3f399a4b65e6a926a006aac7cf1cb50b9321514b176512fe1e5406b40"
+    },
+    "textures/ui/button-pushed.png": {
+      "source": "Electric-Chair-Game/Assets/Sci-Fi UI/_SciFi_GUISkin_/Skin_Assets/buttons/button_pushed.png",
+      "bytes": 36782,
+      "sha256": "97389f18cfb5a34e74697f432a285d8cee6619efa9cf37cfecea1fa5615e1f76"
+    },
+    "textures/ui/bar-red.png": {
+      "source": "Electric-Chair-Game/Assets/Sci-Fi UI/_SciFi_GUISkin_/Bonus_Assets/bars/bar_red.png",
+      "bytes": 19974,
+      "sha256": "ef9e3019537b3011aa53833746fb03a84fddefc01e0d0ce426434b867366dab9"
+    },
+    "textures/ui/bar-green.png": {
+      "source": "Electric-Chair-Game/Assets/Sci-Fi UI/_SciFi_GUISkin_/Skin_Assets/bars/bar_green.png",
+      "bytes": 19976,
+      "sha256": "61f40d9d94d2dcfe87f83eed2cdf088dc94f05d8fe6ae025022757a5c574c1e1"
+    },
+    "textures/ui/bar-background.png": {
+      "source": "Electric-Chair-Game/Assets/Sci-Fi UI/_SciFi_GUISkin_/Bonus_Assets/bars/progress_bar.png",
+      "bytes": 17157,
+      "sha256": "d919874fabf3eecc4d450167f25e7a78e31d0eef34b492c5b6402a573051d912"
+    },
+    "fonts/zekton.ttf": {
+      "source": "Electric-Chair-Game/Assets/Sci-Fi UI/_SciFi_GUISkin_/Skin_Assets/font/zekton free.ttf",
+      "bytes": 21356,
+      "sha256": "24b6b770338380a7069878cfa7d126644c453bedf3608e702165475a0ac4aef1"
+    },
+    "video/final-thunder.mp4": {
+      "source": "Electric-Chair-Game/Assets/Image/FINAL THUNDER.mp4",
+      "bytes": 12053438,
+      "sha256": "6d8b8785d5a4913d4ee5ee34300227f5fb7257dfa0a472b9f2334dd4f9b2901d"
+    },
+    "video/lightning.mp4": {
+      "source": "Electric-Chair-Game/Assets/Image/nc419728_電光が走る.mp4",
+      "bytes": 3181509,
+      "sha256": "dac7c61ba9ffb75d521b60deb06a6333bef47af8e1992abe8a2702053f0d919c"
+    },
+    "audio/bgm/title.mp3": {
+      "source": "Electric-Chair-Game/Assets/BGM/MusMus-BGM-168.mp3",
+      "bytes": 10131376,
+      "sha256": "bf73512e2edf6eb84ff36ffa5c3d3ff1bab4ae89aff2b42a0ede3da742cf3d17"
+    },
+    "audio/bgm/heartbeat.mp3": {
+      "source": "Electric-Chair-Game/Assets/BGM/Heartbeat03-1(Slow-Reverb).mp3",
+      "bytes": 149532,
+      "sha256": "0e46fd512921f4df8537148225aab8101a0305aaf11577e32fca56f1d2cd4cc2"
+    },
+    "audio/se/electric.mp3": {
+      "source": "Electric-Chair-Game/Assets/BGM/nc383878_【効果音】電流・その1・ビリビリ.mp3",
+      "bytes": 191052,
+      "sha256": "740875291f9208a3d4c1b1fb24388d120430de54c984da803f0beeb408c5bf42"
+    },
+    "audio/se/chair.mp3": {
+      "source": "Electric-Chair-Game/Assets/BGM/Onoma-Syakiin04-2(Short).mp3",
+      "bytes": 32392,
+      "sha256": "9edc1b6ba73d36d76deb71e060974080c2967b8f961d7167f1858cc4835c8ea0"
+    },
+    "audio/se/click.mp3": {
+      "source": "Electric-Chair-Game/Assets/BGM/決定ボタンを押す15.mp3",
+      "bytes": 20688,
+      "sha256": "d112ac3a8bf43e6367f2e76fde7f79be2eac1a050228528b819ffe61e52d5323"
+    }
+  }
+}

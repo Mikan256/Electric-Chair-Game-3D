@@ -1,0 +1,45 @@
+/**
+ * Logical asset map. Files are copied from the legacy Unity project by
+ * `pnpm assets:sync`; see public/assets/CREDITS.md.
+ */
+
+export const GAME_ID = 'denki-isu-3d';
+
+export const CHAIR_MODELS = Array.from(
+  { length: 12 },
+  (_, index) => `models/chair-${String(index + 1).padStart(2, '0')}.fbx`,
+);
+
+export const ASSETS = {
+  pedestal: 'models/pedestal.fbx',
+  avatar: 'models/avatar.vrm',
+  clock: 'textures/clock.png',
+  logo: 'textures/logo.png',
+  logoEn: 'textures/logo-en.png',
+  emblem: 'textures/emblem.png',
+  studioLogo: 'textures/studio-logo.png',
+  mikan: 'textures/mikan.png',
+  lightningBolt: 'textures/lightning/bolt.png',
+  lightningSheet: 'textures/lightning/sheet-1.png',
+  uiWindow: 'textures/ui/window.png',
+  uiButton: 'textures/ui/button.png',
+  videoFinalThunder: 'video/final-thunder.mp4',
+  videoLightning: 'video/lightning.mp4',
+  bgmTitle: 'audio/bgm/title.mp3',
+  bgmHeartbeat: 'audio/bgm/heartbeat.mp3',
+  seElectric: 'audio/se/electric.mp3',
+  seChair: 'audio/se/chair.mp3',
+  seClick: 'audio/se/click.mp3',
+} as const;
+
+/**
+ * Resolve a public asset against the document base so the build works under
+ * any sandbox path (Flaxia serves games from a generated origin).
+ */
+export function assetUrl(path: string): string {
+  return new URL(`./assets/${path}`, document.baseURI).href;
+}
+
+export function chairModelUrl(chair: number): string {
+  return assetUrl(CHAIR_MODELS[chair - 1] ?? CHAIR_MODELS[0]!);
+}
