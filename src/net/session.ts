@@ -355,6 +355,12 @@ export class MatchSession {
     const result = applyAction(this.state, action, this.now());
     if (!result.ok) {
       this.emitter.emit('error', { code: result.code, message: result.message });
+      this.send({
+        t: 'error',
+        from: this.selfId,
+        code: result.code,
+        message: result.message,
+      });
       return;
     }
     this.state = result.state;

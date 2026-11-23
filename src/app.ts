@@ -389,7 +389,10 @@ export class App {
     session.on('view', (view) =>
       this.handleView(view, { online: true, roomId: client.currentRoomId }),
     );
-    session.on('error', (error) => this.ui.showToast(`${error.code}: ${error.message}`));
+    session.on('error', (error) => {
+      this.ui.setLocalCommitted(false);
+      this.ui.showToast(`${error.code}: ${error.message}`);
+    });
     session.on('rematch', () => this.ui.showToast('再戦が始まります', 'info'));
 
     this.matchId = null;

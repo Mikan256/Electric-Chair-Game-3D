@@ -202,6 +202,12 @@ describe('MatchSession', () => {
     expect(h.guest.view?.matchId).toBe(h.host.view?.matchId);
     expect(h.guest.view?.turn).toBe(1);
     expect(h.guest.view?.players[0].points).toBe(0);
+
+    // The guest's per-turn state must reset even though turn 1 repeats.
+    expect(h.guest.chooseChair(5)).toEqual({ ok: true });
+    await flush(20);
+    expect(h.guest.hasCommittedThisTurn).toBe(true);
+    expect(h.host.view?.players[1].committed).toBe(true);
   });
 
   it('rejects an out-of-turn chair choice', async () => {

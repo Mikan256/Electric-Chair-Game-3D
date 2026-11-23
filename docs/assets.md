@@ -13,12 +13,13 @@ Web ビルドに必要なファイルだけを `public/assets/` にコピーし�
 ## 同期
 
 ```bash
-pnpm assets:sync
-python3 scripts/optimize-assets.py   # Pillow がある場合
+pnpm assets:sync        # コピー + Pillow があれば縮小
+pnpm assets:optimize    # 画像だけ再圧縮
 ```
 
 `sync-assets.mjs` の `files` マップに論理パス → Unity パスを追加します。
-コピー後に Pillow で大きすぎる画像を縮小します（時計画像は元 8192²）。
+コピー後に `scripts/optimize-assets.py` が大きすぎる画像を縮小します
+（時計画像は元 8192²）。Pillow が無い環境では縮小だけスキップされます。
 
 ## 主なアセット
 
