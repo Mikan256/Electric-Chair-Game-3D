@@ -1,14 +1,20 @@
 /**
  * Pure game types for the electric-chair game.
  *
- * This module must stay free of three.js, DOM and network imports so that the
+ * Turn order (the real show):
+ *   1. attacker secretly sets the electric chair (the "button position")
+ *   2. defender chooses and sits on a chair (public)
+ *   3. attacker presses the button at the front pedestal
+ *   4. result
+ *
+ * This module must stay free of three.js, DOM and network imports so the
  * rules can be simulated headlessly and unit-tested.
  */
 
 export const CHAIR_COUNT = 12;
 
 export type PlayerIndex = 0 | 1;
-export type Phase = 'commit' | 'reveal' | 'result' | 'finished';
+export type Phase = 'set' | 'sit' | 'press' | 'result' | 'finished';
 
 export type EndReason = 'points' | 'shocks' | 'turn-limit' | 'draw' | 'forfeit' | 'abandoned';
 
@@ -21,8 +27,9 @@ export interface MatchConfig {
   readonly shocksToWin: number;
   /** 椅子の数（1〜chairCount）。 */
   readonly chairCount: number;
-  readonly commitMs: number;
-  readonly revealMs: number;
+  readonly setMs: number;
+  readonly sitMs: number;
+  readonly pressMs: number;
   readonly resultMs: number;
 }
 
@@ -31,8 +38,9 @@ export const DEFAULT_CONFIG: MatchConfig = {
   targetPoints: 40,
   shocksToWin: 3,
   chairCount: CHAIR_COUNT,
-  commitMs: 30_000,
-  revealMs: 15_000,
+  setMs: 30_000,
+  sitMs: 30_000,
+  pressMs: 30_000,
   resultMs: 7_000,
 };
 
@@ -45,12 +53,6 @@ export interface MatchPlayer extends PlayerIdentity {
   points: number;
   /** このプレイヤーが相手に感電させた回数。 */
   shocksDealt: number;
-}
-
-/** 秘密の選択。reveal されるまで相手（と観戦者）には見せない。 */
-export interface RevealSecret {
-  chair: number;
-  salt: string;
 }
 
 export interface TurnResult {
@@ -81,9 +83,14 @@ export interface MatchState {
   readonly phase: Phase;
   /** 現在のターン番号（1 始まり）。 */
   readonly turn: number;
+  /** 電気イスを仕掛け、ボタンを押す側。 */
   readonly attacker: PlayerIndex;
-  readonly commitments: readonly [string | null, string | null];
-  readonly reveals: readonly [RevealSecret | null, RevealSecret | null];
+  /** 攻撃側が仕掛けた椅子のコミットメント。press まで椅子は不明。 */
+  readonly wiredCommitment: string | null;
+  /** 守備側が座った椅子。sit 以降は公開。 */
+  readonly sittingChair: number | null;
+  /** press で確定した電気椅子。result まで View には出さない。 */
+  readonly wiredChair: number | null;
   readonly retiredChairs: readonly number[];
   readonly history: readonly TurnResult[];
   readonly lastResult: TurnResult | null;
@@ -98,13 +105,11 @@ export interface MatchViewPlayer {
   readonly name: string;
   readonly points: number;
   readonly shocksDealt: number;
-  readonly revealed: boolean;
-  readonly committed: boolean;
 }
 
 /**
  * ネットワークで共有してよい公開ビュー。
- * reveals（座った椅子・仕掛けた椅子）は result フェーズになるまで含めない。
+ * wiredChair は result まで含めない。sittingChair は守備側が座った時点で公開。
  */
 export interface MatchView {
   readonly matchId: string;
@@ -113,7 +118,8 @@ export interface MatchView {
   readonly phase: Phase;
   readonly turn: number;
   readonly attacker: PlayerIndex;
-  readonly commitments: readonly [string | null, string | null];
+  readonly wiredCommitted: boolean;
+  readonly sittingChair: number | null;
   readonly retiredChairs: readonly number[];
   readonly availableChairs: readonly number[];
   readonly history: readonly TurnResult[];
@@ -126,9 +132,13 @@ export interface MatchView {
 }
 
 export type MatchAction =
-  | { readonly type: 'commit'; readonly player: PlayerIndex; readonly hash: string }
+  /** 攻撃側が電気椅子を仕掛ける（ハッシュのみ）。 */
+  | { readonly type: 'set'; readonly player: PlayerIndex; readonly hash: string }
+  /** 守備側が座る椅子を選ぶ。 */
+  | { readonly type: 'sit'; readonly player: PlayerIndex; readonly chair: number }
+  /** 攻撃側が前の台座のボタンを押す（仕掛けた椅子を公開）。 */
   | {
-      readonly type: 'reveal';
+      readonly type: 'press';
       readonly player: PlayerIndex;
       readonly chair: number;
       readonly salt: string;
@@ -143,8 +153,8 @@ export type MatchErrorCode =
   | 'INVALID_CHAIR'
   | 'CHAIR_RETIRED'
   | 'INVALID_HASH'
-  | 'ALREADY_COMMITTED'
-  | 'ALREADY_REVEALED'
+  | 'ALREADY_SET'
+  | 'ALREADY_SEATED'
   | 'COMMITMENT_MISMATCH'
   | 'MATCH_FINISHED'
   | 'NOT_READY';

@@ -3,8 +3,9 @@ import type { MatchView } from '@/game/types';
 export const NET_PROTOCOL_VERSION = 1;
 
 export type ClientAction =
-  | { readonly type: 'commit'; readonly hash: string }
-  | { readonly type: 'reveal'; readonly chair: number; readonly salt: string }
+  | { readonly type: 'set'; readonly hash: string }
+  | { readonly type: 'sit'; readonly chair: number }
+  | { readonly type: 'press'; readonly chair: number; readonly salt: string }
   | { readonly type: 'advance' }
   | { readonly type: 'forfeit' };
 

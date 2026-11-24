@@ -53,6 +53,10 @@ export class Theater {
   private hovered: ChairActor | null = null;
   private selected: number | null = null;
   private enabled = false;
+  private pressButtonMesh: THREE.Mesh<THREE.CylinderGeometry, THREE.MeshStandardMaterial> | null =
+    null;
+  private pressButtonLight: THREE.PointLight | null = null;
+  private pressButtonActive = false;
   private shake = 0;
   private lastResultTurn = -1;
   private confettiPlayed = false;
@@ -76,22 +80,22 @@ export class Theater {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.72;
 
-    this.camera = new THREE.PerspectiveCamera(41, 1, 0.1, 140);
-    this.camera.position.set(0, 13.2, 19.8);
+    this.camera = new THREE.PerspectiveCamera(46, 1, 0.1, 140);
+    this.camera.position.set(0, 11.5, 19);
 
     this.controls = new OrbitControls(this.camera, canvas);
-    this.controls.target.set(0, -0.2, 0);
+    this.controls.target.set(0, -1.6, 0);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.06;
     this.controls.enablePan = false;
-    this.controls.minDistance = 9;
-    this.controls.maxDistance = 24;
+    this.controls.minDistance = 10;
+    this.controls.maxDistance = 28;
     this.controls.minPolarAngle = 0.32;
     this.controls.maxPolarAngle = 1.42;
     this.controls.autoRotate = true;
     this.controls.autoRotateSpeed = 0.35;
 
-    this.scene.fog = new THREE.FogExp2(0x04040a, 0.019);
+    this.scene.fog = new THREE.FogExp2(0x04040a, 0.012);
     this.scene.background = new THREE.Color(0x030307);
 
     this.buildEnvironment();
@@ -156,97 +160,226 @@ export class Theater {
       }
     }
 
+    this.buildRoom();
+  }
+
+  private buildRoom(): void {
+    const roomDark = new THREE.MeshStandardMaterial({
+      color: 0x09090d,
+      metalness: 0.12,
+      roughness: 0.82,
+    });
+    const wallMaterial = new THREE.MeshStandardMaterial({
+      color: 0x14141d,
+      metalness: 0.22,
+      roughness: 0.68,
+    });
+    const trimMaterial = new THREE.MeshStandardMaterial({
+      color: 0x17171f,
+      metalness: 0.55,
+      roughness: 0.36,
+    });
+
+    // 部屋の床。カメラ側はオープンなスタジオ。
     if (this.debugParams.get('floor') !== 'off') {
-      const floor = new THREE.Mesh(
-        new THREE.CircleGeometry(9.6, 96),
-        new THREE.MeshStandardMaterial({
-          color: 0x0b0b10,
-          metalness: 0.08,
-          roughness: 0.82,
-        }),
-      );
-      floor.rotation.x = -Math.PI / 2;
-      floor.position.y = -0.02;
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(27, 0.2, 28), roomDark);
+      floor.position.set(0, -0.1, 1);
       this.scene.add(floor);
     }
 
-    const outerFloor = new THREE.Mesh(
-      new THREE.RingGeometry(9.6, 15, 96),
-      new THREE.MeshBasicMaterial({ color: 0x05050a }),
-    );
-    outerFloor.rotation.x = -Math.PI / 2;
-    outerFloor.position.y = -0.03;
-    this.scene.add(outerFloor);
+    // 椅子の円形フロア。
+    const chairFloor = new THREE.Mesh(new THREE.CircleGeometry(7.35, 96), roomDark);
+    chairFloor.rotation.x = -Math.PI / 2;
+    chairFloor.position.y = 0.005;
+    this.scene.add(chairFloor);
 
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(6.55, 0.035, 8, 128),
+    const floorRing = new THREE.Mesh(
+      new THREE.TorusGeometry(7.3, 0.028, 8, 128),
       new THREE.MeshBasicMaterial({
         color: 0xe6d7ae,
         transparent: true,
-        opacity: 0.42,
+        opacity: 0.34,
         blending: THREE.AdditiveBlending,
       }),
     );
-    ring.rotation.x = Math.PI / 2;
-    ring.position.y = 0.025;
-    this.scene.add(ring);
+    floorRing.rotation.x = Math.PI / 2;
+    floorRing.position.y = 0.035;
+    this.scene.add(floorRing);
 
-    const outerRing = new THREE.Mesh(
-      new THREE.TorusGeometry(8.15, 0.02, 8, 128),
+    // 奥の壁と左右の壁。正面（カメラ側）は開けてステージを見せる。
+    const backWall = new THREE.Mesh(new THREE.BoxGeometry(27, 8, 0.35), wallMaterial);
+    backWall.position.set(0, 4, -11.3);
+    this.scene.add(backWall);
+
+    for (const x of [-12.4, 12.4] as const) {
+      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.35, 8, 26), wallMaterial);
+      sideWall.position.set(x, 4, 1);
+      this.scene.add(sideWall);
+    }
+
+    // 奥壁のフレームとロゴ。
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(7.4, 3.6, 0.18), trimMaterial);
+    frame.position.set(0, 3.9, -11.05);
+    this.scene.add(frame);
+
+    // 壁の縦ラインと床の縁を強調する。
+    const stripMaterial = new THREE.MeshBasicMaterial({
+      color: 0xf3e3bf,
+      transparent: true,
+      opacity: 0.55,
+      toneMapped: false,
+    });
+    for (const x of [-12.18, 12.18] as const) {
+      for (const z of [-9, -5, -1, 3, 7]) {
+        const strip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 6.2, 0.3), stripMaterial);
+        strip.position.set(x, 4, z);
+        this.scene.add(strip);
+      }
+    }
+
+    // 前方ステージ（段差）を作る。椅子の円の外側、12番の正面。
+    const platform = new THREE.Mesh(new THREE.BoxGeometry(8.6, 0.56, 1.6), trimMaterial);
+    platform.position.set(0, 0.28, 7.7);
+    this.scene.add(platform);
+
+    const carpet = new THREE.Mesh(
+      new THREE.BoxGeometry(3.4, 0.025, 2.0),
+      new THREE.MeshStandardMaterial({ color: 0x3a0b12, roughness: 0.85, metalness: 0.05 }),
+    );
+    carpet.position.set(0, 0.575, 7.7);
+    this.scene.add(carpet);
+
+    const stepMaterial = new THREE.MeshStandardMaterial({
+      color: 0x1b1b25,
+      metalness: 0.55,
+      roughness: 0.38,
+    });
+    const step1 = new THREE.Mesh(new THREE.BoxGeometry(9.6, 0.42, 0.6), stepMaterial);
+    step1.position.set(0, 0.21, 8.8);
+    this.scene.add(step1);
+
+    const step2 = new THREE.Mesh(new THREE.BoxGeometry(10.6, 0.28, 0.6), stepMaterial);
+    step2.position.set(0, 0.14, 9.4);
+    this.scene.add(step2);
+
+    const stepCarpetMaterial = new THREE.MeshStandardMaterial({
+      color: 0x2d0a10,
+      roughness: 0.9,
+      metalness: 0.02,
+    });
+    for (const [z, width] of [
+      [8.8, 9.3],
+      [9.4, 10.3],
+    ] as const) {
+      const stepCarpet = new THREE.Mesh(
+        new THREE.BoxGeometry(width, 0.015, 0.62),
+        stepCarpetMaterial,
+      );
+      stepCarpet.position.set(0, z === 8.8 ? 0.43 : 0.29, z);
+      this.scene.add(stepCarpet);
+    }
+
+    const stepLight = new THREE.PointLight(0xffd9a0, 12, 8, 2);
+    stepLight.position.set(0, 1.5, 9.4);
+    this.scene.add(stepLight);
+
+    const edgeMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffe2a6,
+      transparent: true,
+      opacity: 0.45,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    });
+    const riserFace = new THREE.Mesh(
+      new THREE.BoxGeometry(8.3, 0.5, 0.04),
+      new THREE.MeshStandardMaterial({ color: 0x2a1118, metalness: 0.4, roughness: 0.5 }),
+    );
+    riserFace.position.set(0, 0.29, 8.52);
+    this.scene.add(riserFace);
+
+    for (const x of [-4.28, 4.28] as const) {
+      const side = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.5, 2.25), edgeMaterial);
+      side.position.set(x, 0.3, 7.7);
+      this.scene.add(side);
+    }
+
+    for (const [y, z, width] of [
+      [0.565, 6.92, 8.6],
+      [0.425, 8.52, 9.6],
+      [0.285, 9.12, 10.6],
+      [0.425, 9.12, 9.6],
+      [0.285, 9.72, 10.6],
+    ] as const) {
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(width, 0.025, 0.035), edgeMaterial);
+      edge.position.set(0, y, z);
+      this.scene.add(edge);
+    }
+
+    // 奥壁のパネルラインとリング。暗い壁に奥行きを作る。
+    for (const x of [-8, -4, 0, 4, 8]) {
+      const strip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 6.2, 0.12), stripMaterial);
+      strip.position.set(x, 3.8, -11.05);
+      this.scene.add(strip);
+    }
+    const backRing = new THREE.Mesh(
+      new THREE.TorusGeometry(3.7, 0.035, 8, 96),
       new THREE.MeshBasicMaterial({
-        color: 0xd9cba6,
+        color: 0xffd98a,
         transparent: true,
-        opacity: 0.3,
+        opacity: 0.45,
         blending: THREE.AdditiveBlending,
+        toneMapped: false,
       }),
     );
-    outerRing.rotation.x = Math.PI / 2;
-    outerRing.position.y = 0.025;
-    this.scene.add(outerRing);
+    backRing.position.set(0, 3.6, -11.02);
+    this.scene.add(backRing);
 
-    const starGeometry = new THREE.BufferGeometry();
-    const starCount = 900;
-    const positions = new Float32Array(starCount * 3);
-    for (let i = 0; i < starCount; i += 1) {
-      const radius = 42 + Math.random() * 36;
-      const theta = Math.random() * Math.PI * 2;
-      positions[i * 3] = Math.cos(theta) * radius;
-      positions[i * 3 + 1] = 8 + Math.random() * 34;
-      positions[i * 3 + 2] = Math.sin(theta) * radius;
+    for (const x of [-4.25, 4.25] as const) {
+      const riser = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5, 0.04), edgeMaterial);
+      riser.position.set(x, 0.3, 6.92);
+      this.scene.add(riser);
     }
-    starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const starCanvas = document.createElement('canvas');
-    starCanvas.width = 64;
-    starCanvas.height = 64;
-    const starContext = starCanvas.getContext('2d');
-    if (starContext) {
-      const gradient = starContext.createRadialGradient(32, 32, 0, 32, 32, 30);
-      gradient.addColorStop(0, 'rgba(255,255,255,1)');
-      gradient.addColorStop(0.35, 'rgba(200,220,255,0.8)');
-      gradient.addColorStop(1, 'rgba(140,170,255,0)');
-      starContext.fillStyle = gradient;
-      starContext.fillRect(0, 0, 64, 64);
+
+    // 奥の照明トラス。天井は設けず、上から吊るしたバーでスタジオ感を出す。
+    const trussMaterial = new THREE.MeshStandardMaterial({
+      color: 0x111116,
+      metalness: 0.7,
+      roughness: 0.4,
+    });
+    for (const z of [-2.5, 4.5]) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(20, 0.18, 0.18), trussMaterial);
+      bar.position.set(0, 6.9, z);
+      this.scene.add(bar);
+      for (const x of [-7, -2.5, 2.5, 7]) {
+        const lamp = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.18, 0.25, 0.35, 16),
+          new THREE.MeshStandardMaterial({
+            color: 0x141418,
+            metalness: 0.7,
+            roughness: 0.3,
+          }),
+        );
+        lamp.position.set(x, 6.65, z);
+        lamp.rotation.x = Math.PI;
+        this.scene.add(lamp);
+        const bulb = new THREE.Mesh(
+          new THREE.SphereGeometry(0.075, 10, 8),
+          new THREE.MeshBasicMaterial({ color: 0xfff3d0, toneMapped: false }),
+        );
+        bulb.position.set(x, 6.52, z);
+        this.scene.add(bulb);
+      }
     }
-    const starTexture = new THREE.CanvasTexture(starCanvas);
-    const stars = new THREE.Points(
-      starGeometry,
-      new THREE.PointsMaterial({
-        map: starTexture,
-        color: 0xc4cbe0,
-        size: 0.3,
-        transparent: true,
-        opacity: 0.52,
-        alphaTest: 0.02,
-        depthWrite: false,
-      }),
-    );
-    this.scene.add(stars);
+
+    const wallWash = new THREE.PointLight(0xcf9f6a, 18, 16, 2);
+    wallWash.position.set(0, 4.2, -7.5);
+    this.scene.add(wallWash);
   }
 
   private buildPedestal(): void {
     if (this.debugParams.get('pedestal') === 'off') return;
     const group = new THREE.Group();
-    group.position.set(-2.2, 0, 6.55);
+    group.position.set(-1.8, 0.56, 7.8);
 
     const black = new THREE.MeshStandardMaterial({
       color: 0x0a0a0e,
@@ -281,11 +414,14 @@ export class Theater {
       }),
     );
     button.position.y = 1.06;
+    button.name = 'current-button';
     group.add(button);
+    this.pressButtonMesh = button;
 
     const glow = new THREE.PointLight(0xffcf3a, 1.8, 3.0, 2);
     glow.position.set(0, 1.25, 0);
     group.add(glow);
+    this.pressButtonLight = glow;
 
     this.scene.add(group);
   }
@@ -381,6 +517,13 @@ export class Theater {
     this.controls.autoRotate = idle;
   }
 
+  setButtonActive(active: boolean): void {
+    this.pressButtonActive = active;
+    if (this.pressButtonMesh) {
+      this.pressButtonMesh.material.emissiveIntensity = active ? 0.9 : 0.28;
+    }
+  }
+
   setSelected(chair: number | null): void {
     if (this.selected !== null) {
       const previous = this.chairs.get(this.selected);
@@ -397,6 +540,8 @@ export class Theater {
     for (const chair of this.chairs.values()) {
       if (view.retiredChairs.includes(chair.chair)) {
         chair.setState('retired');
+      } else if (view.sittingChair === chair.chair) {
+        chair.setState('selected');
       } else if (chair.chair === this.selected) {
         chair.setState('selected');
       } else if (view.phase === 'finished') {
@@ -440,7 +585,7 @@ export class Theater {
       }
     }
 
-    if (view.phase === 'commit') {
+    if (view.phase === 'set') {
       this.confettiPlayed = false;
     }
   }
@@ -449,6 +594,7 @@ export class Theater {
     this.selected = null;
     this.lastResultTurn = -1;
     this.confettiPlayed = false;
+    this.setButtonActive(false);
     for (const chair of this.chairs.values()) chair.reset();
     for (const mesh of this.floorNumbers.values()) {
       mesh.material.opacity = 0.92;
@@ -469,15 +615,15 @@ export class Theater {
     if (portrait !== this.portrait) {
       this.portrait = portrait;
       if (portrait) {
-        this.camera.fov = 56;
-        this.camera.position.set(0, 15.8, 24.5);
-        this.controls.target.set(0, -0.55, 0);
-        this.controls.minDistance = 14;
-        this.controls.maxDistance = 36;
+        this.camera.fov = 58;
+        this.camera.position.set(0, 13.5, 23);
+        this.controls.target.set(0, -1.0, 0);
+        this.controls.minDistance = 13;
+        this.controls.maxDistance = 40;
       } else {
         this.camera.fov = 41;
         this.camera.position.set(0, 13.2, 19.8);
-        this.controls.target.set(0, -0.2, 0);
+        this.controls.target.set(0, -1.6, 0);
         this.controls.minDistance = 9;
         this.controls.maxDistance = 24;
       }
@@ -550,6 +696,14 @@ export class Theater {
     this.updateHover();
     this.effects.update(dt);
     for (const chair of this.chairs.values()) chair.update(dt, elapsed);
+    if (this.pressButtonMesh) {
+      const pulse = this.pressButtonActive ? 0.9 + (Math.sin(elapsed * 7) * 0.5 + 0.5) * 1.1 : 0.28;
+      this.pressButtonMesh.material.emissiveIntensity = pulse;
+      this.pressButtonMesh.scale.setScalar(this.pressButtonActive ? 1 + (pulse - 0.9) * 0.08 : 1);
+    }
+    if (this.pressButtonLight) {
+      this.pressButtonLight.intensity = this.pressButtonActive ? 2.4 : 1.8;
+    }
 
     if (this.shake > 0.001) {
       this.shake *= Math.pow(0.02, dt);

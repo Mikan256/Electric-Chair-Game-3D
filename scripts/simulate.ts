@@ -71,46 +71,33 @@ export function simulateMatch(seed: string): SimulationResult {
   let guard = 0;
   while (!state.outcome && guard < 32) {
     guard += 1;
-    const chairs = availableChairs(state);
+    const rows = availableChairs(state);
     const attacker = state.attacker;
     const defender = otherPlayer(attacker);
-    const attackerChair = choose(rng, chairs);
-    const defenderChair = choose(rng, chairs);
-    const attackerSalt = `${seed}:${state.turn}:${attacker}`;
-    const defenderSalt = `${seed}:${state.turn}:${defender}`;
+    const wiredChair = choose(rng, rows);
+    const sittingChair = choose(rng, rows);
+    const salt = `${seed}:${state.turn}:${attacker}`;
     const now = 1_700_000_000_000 + guard * 60_000;
 
-    const aCommit = applyAction(
+    const set = applyAction(
       state,
-      { type: 'commit', player: attacker, hash: commitmentHash(attackerChair, attackerSalt) },
+      { type: 'set', player: attacker, hash: commitmentHash(wiredChair, salt) },
       now,
     );
-    if (!aCommit.ok) throw new Error(`attacker commit failed: ${aCommit.code}`);
-    state = aCommit.state;
+    if (!set.ok) throw new Error(`set failed: ${set.code}`);
+    state = set.state;
 
-    const dCommit = applyAction(
-      state,
-      { type: 'commit', player: defender, hash: commitmentHash(defenderChair, defenderSalt) },
-      now,
-    );
-    if (!dCommit.ok) throw new Error(`defender commit failed: ${dCommit.code}`);
-    state = dCommit.state;
+    const sit = applyAction(state, { type: 'sit', player: defender, chair: sittingChair }, now);
+    if (!sit.ok) throw new Error(`sit failed: ${sit.code}`);
+    state = sit.state;
 
-    const aReveal = applyAction(
+    const press = applyAction(
       state,
-      { type: 'reveal', player: attacker, chair: attackerChair, salt: attackerSalt },
+      { type: 'press', player: attacker, chair: wiredChair, salt },
       now,
     );
-    if (!aReveal.ok) throw new Error(`attacker reveal failed: ${aReveal.code}`);
-    state = aReveal.state;
-
-    const dReveal = applyAction(
-      state,
-      { type: 'reveal', player: defender, chair: defenderChair, salt: defenderSalt },
-      now,
-    );
-    if (!dReveal.ok) throw new Error(`defender reveal failed: ${dReveal.code}`);
-    state = dReveal.state;
+    if (!press.ok) throw new Error(`press failed: ${press.code}`);
+    state = press.state;
 
     if (state.lastResult?.hit) hits += 1;
     if (!state.outcome) {

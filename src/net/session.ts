@@ -50,14 +50,17 @@ function isMatchView(value: unknown): value is MatchView {
   const view = value as Partial<MatchView>;
   return (
     typeof view.matchId === 'string' &&
-    (view.phase === 'commit' ||
-      view.phase === 'reveal' ||
+    (view.phase === 'set' ||
+      view.phase === 'sit' ||
+      view.phase === 'press' ||
       view.phase === 'result' ||
       view.phase === 'finished') &&
     typeof view.turn === 'number' &&
     Array.isArray(view.players) &&
     view.players.length === 2 &&
     Array.isArray(view.availableChairs) &&
+    (view.sittingChair === null || typeof view.sittingChair === 'number') &&
+    typeof view.wiredCommitted === 'boolean' &&
     (view.you === 0 || view.you === 1)
   );
 }
@@ -79,9 +82,8 @@ export class MatchSession {
 
   private state: MatchState | null = null;
   private currentView: MatchView | null = null;
+  /** 攻撃側がセットした秘密。press までローカル保持。 */
   private pendingSecret: { chair: number; salt: string } | null = null;
-  private committedTurn: number | null = null;
-  private revealSentTurn: number | null = null;
   private lastSeq = 0;
   private lastMatchId: string | null = null;
   private hostSeq = 0;
@@ -133,16 +135,25 @@ export class MatchSession {
     return this.pendingSecret;
   }
 
-  get hasCommittedThisTurn(): boolean {
-    return this.currentView !== null && this.committedTurn === this.currentView.turn;
+  get isAttacker(): boolean {
+    return this.currentView?.attacker === this.selfIndex;
+  }
+
+  get isDefender(): boolean {
+    return this.currentView !== null && this.currentView.attacker !== this.selfIndex;
+  }
+
+  /** このターン、自分の選択が確定しているか（UI/ボット用）。 */
+  get hasActedThisTurn(): boolean {
+    const view = this.currentView;
+    if (!view) return false;
+    if (view.phase === 'set') return view.attacker === this.selfIndex && view.wiredCommitted;
+    if (view.phase === 'sit') return view.sittingChair !== null;
+    return false;
   }
 
   get isDisposed(): boolean {
     return this.disposed;
-  }
-
-  get isMyTurn(): boolean {
-    return this.currentView?.attacker === this.selfIndex;
   }
 
   // ---------------------------------------------------------------- events
@@ -157,41 +168,93 @@ export class MatchSession {
   // --------------------------------------------------------------- commands
 
   /**
-   * 椅子を確定する。commit フェーズでのみ有効。
-   * 秘密はローカルに保持し、reveal フェーズで自動送信する。
+   * 椅子を確定する。
+   * - set フェーズ: 攻撃側が電気椅子を仕掛ける（秘密はローカル保持）
+   * - sit フェーズ: 守備側が座る椅子を選ぶ（公開）
+   * - press は pressButton() を使う
    */
   chooseChair(chair: number): { ok: true } | { ok: false; code: string; message: string } {
     if (this.disposed) return { ok: false, code: 'CLOSED', message: 'セッションが終了しています' };
-    if (!this.currentView)
+    if (!this.currentView) {
       return { ok: false, code: 'NOT_READY', message: 'まだ試合が始まっていません' };
+    }
     this.hostMaybeTimeout();
     const view = this.currentView;
-    if (!view || view.phase !== 'commit') {
-      return { ok: false, code: 'INVALID_PHASE', message: '今は椅子を選べません' };
-    }
-    if (this.committedTurn === view.turn) {
-      return { ok: false, code: 'ALREADY_COMMITTED', message: 'すでに選択済みです' };
-    }
-    if (!view.availableChairs.includes(chair)) {
-      return { ok: false, code: 'INVALID_CHAIR', message: 'その椅子は選択できません' };
+    if (!view) return { ok: false, code: 'NOT_READY', message: '試合が始まっていません' };
+
+    if (view.phase === 'set') {
+      if (view.attacker !== this.selfIndex) {
+        return { ok: false, code: 'NOT_YOUR_TURN', message: '攻撃側が電気椅子を仕掛けています' };
+      }
+      if (view.wiredCommitted) {
+        return { ok: false, code: 'ALREADY_SET', message: 'すでに仕掛けています' };
+      }
+      if (!view.availableChairs.includes(chair)) {
+        return { ok: false, code: 'INVALID_CHAIR', message: 'その椅子は選べません' };
+      }
+
+      const salt = createSalt();
+      const hash = commitmentHash(chair, salt);
+      this.pendingSecret = { chair, salt };
+      if (this.isHost) {
+        this.hostApply({ type: 'set', player: this.selfIndex, hash });
+      } else {
+        this.sendAction({ type: 'set', hash });
+        this.emitter.emit('view', view);
+      }
+      return { ok: true };
     }
 
-    const salt = createSalt();
-    const hash = commitmentHash(chair, salt);
-    this.pendingSecret = { chair, salt };
-    this.committedTurn = view.turn;
-    this.revealSentTurn = null;
+    if (view.phase === 'sit') {
+      if (view.attacker === this.selfIndex) {
+        return { ok: false, code: 'NOT_YOUR_TURN', message: '守備側が椅子を選んでいます' };
+      }
+      if (view.sittingChair !== null) {
+        return { ok: false, code: 'ALREADY_SEATED', message: 'すでに座る椅子を選んでいます' };
+      }
+      if (!view.availableChairs.includes(chair)) {
+        return { ok: false, code: 'INVALID_CHAIR', message: 'その椅子には座れません' };
+      }
+      if (this.isHost) {
+        this.hostApply({ type: 'sit', player: this.selfIndex, chair });
+      } else {
+        this.sendAction({ type: 'sit', chair });
+      }
+      return { ok: true };
+    }
 
+    return {
+      ok: false,
+      code: 'INVALID_PHASE',
+      message: view.phase === 'press' ? 'ボタンを押してください' : '今は椅子を選べません',
+    };
+  }
+
+  /** 攻撃側が前方の台座のボタンを押す。 */
+  pressButton(): { ok: true } | { ok: false; code: string; message: string } {
+    if (this.disposed) return { ok: false, code: 'CLOSED', message: 'セッションが終了しています' };
+    this.hostMaybeTimeout();
+    const view = this.currentView;
+    if (!view) return { ok: false, code: 'NOT_READY', message: '試合が始まっていません' };
+    if (view.phase !== 'press') {
+      return { ok: false, code: 'INVALID_PHASE', message: 'まだボタンを押せません' };
+    }
+    if (view.attacker !== this.selfIndex) {
+      return { ok: false, code: 'NOT_YOUR_TURN', message: 'ボタンを押せるのは攻撃側だけです' };
+    }
+    if (!this.pendingSecret) {
+      return { ok: false, code: 'NOT_READY', message: '電気椅子の情報がありません' };
+    }
+
+    const { chair, salt } = this.pendingSecret;
     if (this.isHost) {
-      this.hostApply({ type: 'commit', player: this.selfIndex, hash });
+      this.hostApply({ type: 'press', player: this.selfIndex, chair, salt });
     } else {
-      this.sendAction({ type: 'commit', hash });
-      this.emitter.emit('view', view);
+      this.sendAction({ type: 'press', chair, salt });
     }
     return { ok: true };
   }
 
-  /** result フェーズを早送りする。 */
   advance(): void {
     if (this.currentView?.phase !== 'result') return;
     if (this.isHost) this.hostApply({ type: 'advance' });
@@ -204,7 +267,6 @@ export class MatchSession {
     else this.sendAction({ type: 'forfeit' });
   }
 
-  /** 試合終了後の再戦。両者が押すと新しい試合が始まる。 */
   rematch(): void {
     if (this.currentView?.phase !== 'finished') return;
     if (this.isHost) {
@@ -220,7 +282,6 @@ export class MatchSession {
     else this.send({ t: 'sync', from: this.selfId });
   }
 
-  /** ホストの期限チェック。テスト用にも公開。 */
   tick(): void {
     if (!this.isHost || !this.state || !this.currentView) return;
     const deadline = this.currentView.deadline;
@@ -325,10 +386,12 @@ export class MatchSession {
 
   private fromClientAction(action: ClientAction, player: PlayerIndex): MatchAction {
     switch (action.type) {
-      case 'commit':
-        return { type: 'commit', player, hash: action.hash };
-      case 'reveal':
-        return { type: 'reveal', player, chair: action.chair, salt: action.salt };
+      case 'set':
+        return { type: 'set', player, hash: action.hash };
+      case 'sit':
+        return { type: 'sit', player, chair: action.chair };
+      case 'press':
+        return { type: 'press', player, chair: action.chair, salt: action.salt };
       case 'advance':
         return { type: 'advance' };
       case 'forfeit':
@@ -351,7 +414,6 @@ export class MatchSession {
 
   private hostApply(action: MatchAction): void {
     if (!this.state) return;
-    const wasTurn = this.state.turn;
     const result = applyAction(this.state, action, this.now());
     if (!result.ok) {
       this.emitter.emit('error', { code: result.code, message: result.message });
@@ -364,33 +426,9 @@ export class MatchSession {
       return;
     }
     this.state = result.state;
-
-    // 自分の秘密は、両者のコミットが揃ったら必ず公開する。
-    if (
-      this.state.phase === 'reveal' &&
-      this.pendingSecret &&
-      this.state.reveals[this.selfIndex] === null
-    ) {
-      const reveal = applyAction(
-        this.state,
-        {
-          type: 'reveal',
-          player: this.selfIndex,
-          chair: this.pendingSecret.chair,
-          salt: this.pendingSecret.salt,
-        },
-        this.now(),
-      );
-      if (reveal.ok) this.state = reveal.state;
-    }
-
-    if (this.state.phase === 'commit' && this.state.turn !== wasTurn) {
+    if (this.state.phase === 'result' || this.state.phase === 'finished') {
       this.pendingSecret = null;
     }
-    if (this.state.phase === 'finished') {
-      this.pendingSecret = null;
-    }
-
     this.publish();
   }
 
@@ -413,33 +451,11 @@ export class MatchSession {
     if (this.lastMatchId !== view.matchId) {
       this.lastMatchId = view.matchId;
       this.pendingSecret = null;
-      this.committedTurn = null;
-      this.revealSentTurn = null;
     }
     this.currentView = view;
-
-    if (!this.isHost && view.phase === 'reveal' && this.pendingSecret) {
-      const revealed = view.players[this.selfIndex].revealed;
-      if (!revealed && this.revealSentTurn !== view.turn) {
-        this.revealSentTurn = view.turn;
-        this.send({
-          t: 'action',
-          from: this.selfId,
-          action: {
-            type: 'reveal',
-            chair: this.pendingSecret.chair,
-            salt: this.pendingSecret.salt,
-          },
-          turn: view.turn,
-          phase: view.phase,
-        });
-      }
-    }
-
-    if (view.phase === 'finished') {
+    if (view.phase === 'result' || view.phase === 'finished') {
       this.pendingSecret = null;
     }
-
     this.emitter.emit('view', view);
   }
 
@@ -476,8 +492,6 @@ export class MatchSession {
       now: this.now(),
     });
     this.pendingSecret = null;
-    this.committedTurn = null;
-    this.revealSentTurn = null;
     this.applyView(createView(this.state, this.selfIndex));
     this.emitter.emit('rematch', undefined);
     this.publish();

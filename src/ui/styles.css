@@ -234,6 +234,41 @@ body,
   box-shadow: 0 0 24px rgba(33, 224, 138, 0.35);
 }
 
+.btn.press {
+  border-color: #ffd200;
+  background: radial-gradient(circle at 50% 30%, #fff4a8, #ffd200 45%, #d79a00 100%);
+  color: #241b00;
+  font-weight: 900;
+  min-height: 54px;
+  padding: 10px 28px;
+  font-size: 16px;
+  letter-spacing: 0.08em;
+  box-shadow:
+    0 0 28px rgba(255, 210, 0, 0.5),
+    inset 0 0 18px rgba(255, 255, 255, 0.35);
+  animation: press-pulse 1.2s ease-in-out infinite;
+}
+
+.btn.press:hover {
+  box-shadow:
+    0 0 40px rgba(255, 210, 0, 0.8),
+    inset 0 0 18px rgba(255, 255, 255, 0.5);
+}
+
+@keyframes press-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 18px rgba(255, 210, 0, 0.35),
+      inset 0 0 18px rgba(255, 255, 255, 0.3);
+  }
+  50% {
+    box-shadow:
+      0 0 42px rgba(255, 210, 0, 0.75),
+      inset 0 0 22px rgba(255, 255, 255, 0.45);
+  }
+}
+
 .btn.ghost {
   border-color: rgba(255, 255, 255, 0.2);
   background: rgba(10, 10, 18, 0.9);
@@ -540,10 +575,14 @@ body,
   width: min(980px, 96vw);
   padding: 12px clamp(12px, 2vw, 22px) 14px;
   border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(4, 4, 9, 0.82);
+  background: rgba(4, 4, 9, 0.62);
   backdrop-filter: blur(10px);
   clip-path: polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%, 0 14px);
   pointer-events: auto;
+}
+
+.chair-drawer {
+  padding-bottom: 6px;
 }
 
 .chair-grid {
@@ -554,7 +593,7 @@ body,
 
 .chair-btn {
   position: relative;
-  aspect-ratio: 1 / 1;
+  height: 44px;
   min-width: 0;
   border: 1px solid rgba(255, 36, 66, 0.35);
   border-radius: 4px;
@@ -905,6 +944,10 @@ body,
     font-size: 30px;
   }
 
+  .chair-drawer {
+    padding-bottom: 6px;
+  }
+
   .chair-grid {
     grid-template-columns: repeat(6, 1fr);
   }
@@ -949,8 +992,7 @@ body,
   }
 
   .chair-btn {
-    aspect-ratio: auto;
-    min-height: 38px;
+    height: 38px;
     font-size: 14px;
   }
 
@@ -1095,14 +1137,17 @@ body,
     padding: 4px 6px 6px;
   }
 
+  .chair-drawer {
+    padding-bottom: 6px;
+  }
+
   .chair-grid {
     grid-template-columns: repeat(12, 1fr);
     gap: 4px;
   }
 
   .chair-btn {
-    aspect-ratio: auto;
-    min-height: 30px;
+    height: 30px;
     font-size: 12px;
   }
 
@@ -1115,6 +1160,12 @@ body,
     min-height: 28px;
     padding: 4px 12px;
     font-size: 11px;
+  }
+
+  .actions .btn.press {
+    min-height: 34px;
+    padding: 6px 18px;
+    font-size: 13px;
   }
 
   .actions .status {

@@ -1,15 +1,17 @@
 /**
  * Pure, deterministic rules engine for the electric-chair game.
  *
- * Turn lifecycle:
- *   commit (both players secretly commit to a salted hash)
- *     -> reveal (both reveal; the choices stay hidden until both are in)
- *     -> result (both choices and the outcome are public)
- *     -> next turn / finished
+ * Turn lifecycle (faithful to the show):
+ *   set   (attacker secretly commits to one of the 12 chairs)
+ *     -> sit   (defender publicly chooses a chair and sits)
+ *     -> press (attacker presses the button on the front pedestal;
+ *               the committed chair is revealed and compared)
+ *     -> result
+ *     -> next set / finished
  *
- * The host is authoritative, but it cannot see a secret before the commit
- * phase is over, which makes hosting fair. A player who refuses to reveal
- * forfeits the match; the host cannot fabricate their secret.
+ * The attacker's hidden choice is protected by a salted commitment. The
+ * standing host cannot see the wired chair before the button press, and the
+ * attacker cannot change it after seeing where the defender sat.
  */
 import { randomId, randomInt, verifyCommitment } from './rng';
 import {
@@ -24,7 +26,6 @@ import {
   type MatchView,
   type PlayerIdentity,
   type PlayerIndex,
-  type RevealSecret,
   type TurnResult,
 } from './types';
 
@@ -81,16 +82,17 @@ export function createMatch(options: CreateMatchOptions): MatchState {
       { ...options.players[0], points: 0, shocksDealt: 0 },
       { ...options.players[1], points: 0, shocksDealt: 0 },
     ],
-    phase: 'commit',
+    phase: 'set',
     turn: 1,
     attacker,
-    commitments: [null, null],
-    reveals: [null, null],
+    wiredCommitment: null,
+    sittingChair: null,
+    wiredChair: null,
     retiredChairs: [],
     history: [],
     lastResult: null,
     outcome: null,
-    deadline: now + config.commitMs,
+    deadline: now + config.setMs,
     revision: 0,
   };
 }
@@ -103,21 +105,6 @@ function bump(state: MatchState, patch: Partial<MatchState>): MatchState {
   return { ...state, ...patch, revision: state.revision + 1 };
 }
 
-function bothCommitted(state: MatchState): boolean {
-  return state.commitments[0] !== null && state.commitments[1] !== null;
-}
-
-function bothRevealed(state: MatchState): boolean {
-  return state.reveals[0] !== null && state.reveals[1] !== null;
-}
-
-function beginReveal(state: MatchState, now: number): MatchState {
-  return bump(state, {
-    phase: 'reveal',
-    deadline: now + state.config.revealMs,
-  });
-}
-
 function finish(state: MatchState, outcome: MatchOutcome): MatchState {
   return bump(state, {
     phase: 'finished',
@@ -126,15 +113,12 @@ function finish(state: MatchState, outcome: MatchOutcome): MatchState {
   });
 }
 
-function resolveTurn(state: MatchState, now: number): MatchState {
-  const wired = state.reveals[state.attacker];
-  const sitting = state.reveals[getDefender(state)];
-  if (!wired || !sitting) {
-    throw new Error('resolveTurn called without both reveals');
-  }
+function resolveTurn(state: MatchState, wiredChair: number, now: number): MatchState {
+  const sittingChair = state.sittingChair;
+  if (sittingChair === null) throw new Error('resolveTurn called without a sitting chair');
 
-  const hit = wired.chair === sitting.chair;
   const defender = getDefender(state);
+  const hit = wiredChair === sittingChair;
   const pointsBefore: [number, number] = [state.players[0].points, state.players[1].points];
   const shocksBefore: [number, number] = [
     state.players[0].shocksDealt,
@@ -149,8 +133,8 @@ function resolveTurn(state: MatchState, now: number): MatchState {
     points[defender] = 0;
     shocks[state.attacker] = shocks[state.attacker] + 1;
   } else {
-    points[defender] = points[defender] + sitting.chair;
-    retiredChair = sitting.chair;
+    points[defender] = points[defender] + sittingChair;
+    retiredChair = sittingChair;
   }
 
   const pointsAfter: [number, number] = [points[0], points[1]];
@@ -159,10 +143,10 @@ function resolveTurn(state: MatchState, now: number): MatchState {
     turn: state.turn,
     attacker: state.attacker,
     defender,
-    wiredChair: wired.chair,
-    sittingChair: sitting.chair,
+    wiredChair,
+    sittingChair,
     hit,
-    pointsAwarded: hit ? 0 : sitting.chair,
+    pointsAwarded: hit ? 0 : sittingChair,
     pointsLost: hit ? pointsBefore[defender] : 0,
     retiredChair,
     pointsAfter,
@@ -191,6 +175,7 @@ function resolveTurn(state: MatchState, now: number): MatchState {
       { ...state.players[0], points: pointsAfter[0], shocksDealt: shocksAfter[0] },
       { ...state.players[1], points: pointsAfter[1], shocksDealt: shocksAfter[1] },
     ],
+    wiredChair,
     retiredChairs,
     history: [...state.history, result],
     lastResult: result,
@@ -201,62 +186,16 @@ function resolveTurn(state: MatchState, now: number): MatchState {
 }
 
 function nextTurn(state: MatchState, now: number): MatchState {
-  if (state.outcome) {
-    return finish(state, state.outcome);
-  }
+  if (state.outcome) return finish(state, state.outcome);
   return bump(state, {
-    phase: 'commit',
+    phase: 'set',
     turn: state.turn + 1,
     attacker: getDefender(state),
-    commitments: [null, null],
-    reveals: [null, null],
-    deadline: now + state.config.commitMs,
+    wiredCommitment: null,
+    sittingChair: null,
+    wiredChair: null,
+    deadline: now + state.config.setMs,
   });
-}
-
-function applyTimeout(state: MatchState, now: number): ActionResult {
-  if (state.phase === 'finished') {
-    return fail('MATCH_FINISHED', '試合は終了しています');
-  }
-
-  if (state.phase === 'commit') {
-    const missing: PlayerIndex[] = [];
-    for (const player of [0, 1] as const) {
-      if (state.commitments[player] === null) missing.push(player);
-    }
-    if (missing.length === 2) {
-      return {
-        ok: true,
-        state: finish(state, { kind: 'draw', winner: null, reason: 'abandoned' }),
-      };
-    }
-    const loser = missing[0]!;
-    return {
-      ok: true,
-      state: finish(state, { kind: 'win', winner: otherPlayer(loser), reason: 'forfeit' }),
-    };
-  }
-
-  if (state.phase === 'reveal') {
-    const missing: PlayerIndex[] = [];
-    for (const player of [0, 1] as const) {
-      if (state.reveals[player] === null) missing.push(player);
-    }
-    if (missing.length === 2) {
-      return {
-        ok: true,
-        state: finish(state, { kind: 'draw', winner: null, reason: 'abandoned' }),
-      };
-    }
-    const loser = missing[0]!;
-    return {
-      ok: true,
-      state: finish(state, { kind: 'win', winner: otherPlayer(loser), reason: 'forfeit' }),
-    };
-  }
-
-  // result: 自動で次へ進む。
-  return { ok: true, state: nextTurn(state, now) };
 }
 
 export function applyAction(
@@ -269,59 +208,82 @@ export function applyAction(
   }
 
   switch (action.type) {
-    case 'commit': {
-      if (state.phase !== 'commit') {
-        return fail('INVALID_PHASE', `commit できないフェーズです: ${state.phase}`);
+    case 'set': {
+      if (state.phase !== 'set') {
+        return fail('INVALID_PHASE', `set できないフェーズです: ${state.phase}`);
       }
       const { player } = action;
       if (player !== 0 && player !== 1) {
         return fail('INVALID_PLAYER', 'プレイヤー番号が不正です');
       }
+      if (player !== state.attacker) {
+        return fail('INVALID_PLAYER', '電気イスを仕掛けられるのは攻撃側だけです');
+      }
       if (!/^[0-9a-f]{8,64}$/i.test(action.hash)) {
         return fail('INVALID_HASH', 'コミットメントの形式が不正です');
       }
-      if (state.commitments[player] !== null) {
-        return fail('ALREADY_COMMITTED', 'すでにコミット済みです');
+      if (state.wiredCommitment !== null) {
+        return fail('ALREADY_SET', 'すでに電気イスを仕掛けています');
       }
-      const commitments: [string | null, string | null] = [...state.commitments];
-      commitments[player] = action.hash.toLowerCase();
-      const committed = { ...state, commitments };
       return {
         ok: true,
-        state: bothCommitted(committed)
-          ? beginReveal(committed, now)
-          : bump(state, { commitments }),
+        state: bump(state, {
+          wiredCommitment: action.hash.toLowerCase(),
+          phase: 'sit',
+          deadline: now + state.config.sitMs,
+        }),
       };
     }
 
-    case 'reveal': {
-      if (state.phase !== 'reveal') {
-        return fail('INVALID_PHASE', `reveal できないフェーズです: ${state.phase}`);
+    case 'sit': {
+      if (state.phase !== 'sit') {
+        return fail('INVALID_PHASE', `sit できないフェーズです: ${state.phase}`);
       }
-      const { player, chair, salt } = action;
+      const { player } = action;
       if (player !== 0 && player !== 1) {
         return fail('INVALID_PLAYER', 'プレイヤー番号が不正です');
       }
-      if (state.reveals[player] !== null) {
-        return fail('ALREADY_REVEALED', 'すでに公開済みです');
+      if (player !== getDefender(state)) {
+        return fail('INVALID_PLAYER', '座る椅子を選べるのは守備側だけです');
       }
-      const commitment = state.commitments[player];
+      if (state.sittingChair !== null) {
+        return fail('ALREADY_SEATED', 'すでに座る椅子を選んでいます');
+      }
+      if (!isChairLegal(state, action.chair)) {
+        return fail('INVALID_CHAIR', 'その椅子には座れません');
+      }
+      return {
+        ok: true,
+        state: bump(state, {
+          sittingChair: action.chair,
+          phase: 'press',
+          deadline: now + state.config.pressMs,
+        }),
+      };
+    }
+
+    case 'press': {
+      if (state.phase !== 'press') {
+        return fail('INVALID_PHASE', `press できないフェーズです: ${state.phase}`);
+      }
+      const { player } = action;
+      if (player !== 0 && player !== 1) {
+        return fail('INVALID_PLAYER', 'プレイヤー番号が不正です');
+      }
+      if (player !== state.attacker) {
+        return fail('INVALID_PLAYER', 'ボタンを押せるのは攻撃側だけです');
+      }
+      const commitment = state.wiredCommitment;
       if (commitment === null) {
-        return fail('COMMITMENT_MISMATCH', 'コミットメントがありません');
+        return fail('NOT_READY', '電気イスが仕掛けられていません');
       }
-      if (!verifyCommitment(commitment, chair, salt)) {
-        return fail('COMMITMENT_MISMATCH', 'コミットメントと選択が一致しません');
+      if (!verifyCommitment(commitment, action.chair, action.salt)) {
+        return fail('COMMITMENT_MISMATCH', '仕掛けた椅子と公開された椅子が一致しません');
       }
-      if (!isChairLegal(state, chair)) {
-        return fail('INVALID_CHAIR', 'その椅子は選択できません');
+      if (!isChairLegal(state, action.chair)) {
+        return fail('INVALID_CHAIR', 'その椅子には仕掛けられません');
       }
-      const reveals: [RevealSecret | null, RevealSecret | null] = [...state.reveals];
-      reveals[player] = { chair, salt };
-      const revealed = { ...state, reveals };
-      if (bothRevealed(revealed)) {
-        return { ok: true, state: resolveTurn(revealed, now) };
-      }
-      return { ok: true, state: bump(state, { reveals }) };
+      return { ok: true, state: resolveTurn(state, action.chair, now) };
     }
 
     case 'advance': {
@@ -332,7 +294,38 @@ export function applyAction(
     }
 
     case 'timeout': {
-      return applyTimeout(state, now);
+      if (state.phase === 'set') {
+        return {
+          ok: true,
+          state: finish(state, {
+            kind: 'win',
+            winner: getDefender(state),
+            reason: 'forfeit',
+          }),
+        };
+      }
+      if (state.phase === 'sit') {
+        return {
+          ok: true,
+          state: finish(state, {
+            kind: 'win',
+            winner: state.attacker,
+            reason: 'forfeit',
+          }),
+        };
+      }
+      if (state.phase === 'press') {
+        return {
+          ok: true,
+          state: finish(state, {
+            kind: 'win',
+            winner: getDefender(state),
+            reason: 'forfeit',
+          }),
+        };
+      }
+      // result: continue automatically
+      return { ok: true, state: nextTurn(state, now) };
     }
 
     case 'forfeit': {
@@ -342,7 +335,11 @@ export function applyAction(
       }
       return {
         ok: true,
-        state: finish(state, { kind: 'win', winner: otherPlayer(player), reason: 'forfeit' }),
+        state: finish(state, {
+          kind: 'win',
+          winner: otherPlayer(player),
+          reason: 'forfeit',
+        }),
       };
     }
 
@@ -361,22 +358,19 @@ export function createView(state: MatchState, you: PlayerIndex): MatchView {
         name: state.players[0].name,
         points: state.players[0].points,
         shocksDealt: state.players[0].shocksDealt,
-        revealed: state.reveals[0] !== null,
-        committed: state.commitments[0] !== null,
       },
       {
         id: state.players[1].id,
         name: state.players[1].name,
         points: state.players[1].points,
         shocksDealt: state.players[1].shocksDealt,
-        revealed: state.reveals[1] !== null,
-        committed: state.commitments[1] !== null,
       },
     ],
     phase: state.phase,
     turn: state.turn,
     attacker: state.attacker,
-    commitments: state.commitments,
+    wiredCommitted: state.wiredCommitment !== null,
+    sittingChair: state.sittingChair,
     retiredChairs: state.retiredChairs,
     availableChairs: availableChairs(state),
     history: state.history,

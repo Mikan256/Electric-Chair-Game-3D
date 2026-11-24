@@ -22,9 +22,14 @@ test.describe('solo vertical slice', () => {
     await expect(page.locator('#hud-turn')).toHaveText('TURN 1 / 8', { timeout: 20_000 });
     await expect(page.locator('.player-card.left .role')).toContainText('攻撃側');
 
+    await page.locator('#btn-grid').click();
     await page.locator('.chair-btn[data-chair="5"]').click();
     await expect(page.locator('#btn-confirm')).toBeEnabled();
     await page.locator('#btn-confirm').click();
+
+    // Solo CPU sits automatically; the human attacker must press the button.
+    await expect(page.locator('#btn-press')).toBeVisible({ timeout: 15_000 });
+    await page.locator('#btn-press').click();
 
     await expect(page.locator('#result-overlay')).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('#hud-phase')).toHaveText('判定');

@@ -12,8 +12,10 @@ OpenCode でこのリポジトリを触るエージェント向けの運用ル�
    ルール変更は必ず `src/game/` と `tests/game/` をセットで。
 2. `src/game/` は純粋 TS。three.js / DOM / `window` / ネットワークを import しない。
    ヘッドレスでシミュレーションできる状態を保つ。
-3. マルチプレイは **ホスト権威 + コミット・リビール**。
-   ホストは相手の選択を result まで見られない。`MatchView` に秘密（`reveals`）を入れない。
+3. マルチプレイは **ホスト権威 + 攻撃側のコミット・リビール**。
+   ターン順は `set`（攻撃側が仕掛ける）→ `sit`（守備側が座る・公開）→
+   `press`（攻撃側が前方ボタンを押す）。
+   `MatchView` に `wiredChair` を result まで入れない。
    公開ビューは `createView(state, viewer)` のみ。
 4. ゲームから WebSocket / WebRTC / fetch を直接使わない。
    Flaxia 親フレームとの `postMessage` は `src/net/flaxia-client.ts` に集約する。
@@ -58,12 +60,13 @@ main.ts → App
   ├── Theater (three.js)   : scene/stage.ts, chair.ts, effects.ts, audio.ts
   ├── GameUI (DOM)         : ui/game-ui.ts, ui/styles.css
   ├── FlaxiaClient         : net/flaxia-client.ts（postMessage 契約）
-  └── MatchSession         : net/session.ts（ホスト権威 + commit-reveal）
+  └── MatchSession         : net/session.ts（ホスト権威 + set/sit/press）
         └── rules.ts       : 純粋な状態機械
 ```
 
-- 状態の流れ: `commit → reveal → result → (next commit | finished)`
-- 秘密は `commitmentHash(chair, salt)` のみ送る。salt は reveal までローカル保持。
+- 状態の流れ: `set → sit → press → result → (next set | finished)`
+- 攻撃側の仕掛けは `commitmentHash(chair, salt)` のみ送る。salt は press までローカル保持。
+- 守備側の `sittingChair` は sit 時点で公開する。
 - ホストは `applyAction()` の結果だけを `createView()` で配布する。
 - 通信は `sendPeerData` の JSON。65,536 bytes 制限に注意。
 - 再接続は `hello` / `sync` / full snapshot で行う。差分同期はしない。

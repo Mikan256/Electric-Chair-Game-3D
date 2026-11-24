@@ -102,6 +102,7 @@ export class App {
       onLeave: () => this.leave(),
       onPreviewChair: (chair) => this.previewChair(chair),
       onConfirmChair: (chair) => this.confirmChair(chair),
+      onPress: () => this.pressButton(),
       onAdvance: () => this.session?.advance(),
       onRematch: () => this.rematch(),
       onForfeit: () => this.forfeit(),
@@ -157,6 +158,9 @@ export class App {
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
     const view = this.session?.view;
     if (!view) return;
+    const isAttacker = view.attacker === view.you;
+    const canSet = view.phase === 'set' && isAttacker && !view.wiredCommitted;
+    const canSit = view.phase === 'sit' && !isAttacker && view.sittingChair === null;
 
     if (event.key === 'Enter') {
       if (view.phase === 'result') {
@@ -164,11 +168,12 @@ export class App {
         this.session?.advance();
         return;
       }
-      if (
-        view.phase === 'commit' &&
-        this.ui.pending !== null &&
-        !view.players[view.you].committed
-      ) {
+      if (view.phase === 'press' && isAttacker) {
+        event.preventDefault();
+        this.pressButton();
+        return;
+      }
+      if ((canSet || canSit) && this.ui.pending !== null) {
         event.preventDefault();
         this.confirmChair(this.ui.pending);
       }
@@ -176,8 +181,7 @@ export class App {
     }
 
     const chair = keyToChair(event.key);
-    if (chair === null || view.phase !== 'commit') return;
-    if (view.players[view.you].committed) return;
+    if (chair === null || (!canSet && !canSit)) return;
     if (!view.availableChairs.includes(chair)) return;
     event.preventDefault();
     this.theater.audio.play('click');
@@ -390,7 +394,6 @@ export class App {
       this.handleView(view, { online: true, roomId: client.currentRoomId }),
     );
     session.on('error', (error) => {
-      this.ui.setLocalCommitted(false);
       this.ui.showToast(`${error.code}: ${error.message}`);
     });
     session.on('rematch', () => this.ui.showToast('再戦が始まります', 'info'));
@@ -428,15 +431,26 @@ export class App {
       this.theater.setIdle(false);
       this.ui.showGame(view, options);
     }
-    if (view.turn !== this.lastViewTurn || view.phase !== 'commit') {
+    const isAttacker = view.attacker === view.you;
+    const canSelect =
+      (view.phase === 'set' && isAttacker && !view.wiredCommitted) ||
+      (view.phase === 'sit' && !isAttacker && view.sittingChair === null);
+    if (
+      view.turn !== this.lastViewTurn ||
+      view.phase !== this.lastPhase ||
+      view.phase === 'press' ||
+      view.phase === 'result' ||
+      view.phase === 'finished' ||
+      (view.phase === 'sit' && view.sittingChair !== null)
+    ) {
       this.theater.setSelected(null);
     }
     this.lastViewTurn = view.turn;
     this.ui.updateView(view);
     this.theater.applyView(view);
-    if (view.phase === 'reveal' && this.lastPhase !== 'reveal') {
+    if (view.phase === 'press' && this.lastPhase !== 'press') {
       void this.theater.audio.playHeartbeat(true);
-    } else if (view.phase !== 'reveal' && this.lastPhase === 'reveal') {
+    } else if (view.phase !== 'press' && this.lastPhase === 'press') {
       this.theater.audio.stopHeartbeat();
     }
     if (view.phase === 'result' && view.lastResult) {
@@ -447,9 +461,8 @@ export class App {
       }
     }
     this.lastPhase = view.phase;
-    const me = view.players[view.you];
-    const canSelect = view.phase === 'commit' && !me.committed;
     this.theater.setEnabled(canSelect);
+    this.theater.setButtonActive(view.phase === 'press' && isAttacker);
     if (view.phase === 'finished' && view.outcome?.kind === 'win') {
       this.theater.audio.stopHeartbeat();
     }
@@ -457,15 +470,24 @@ export class App {
 
   private previewChair(chair: number | null): void {
     const view = this.session?.view;
-    if (!view || view.phase !== 'commit') return;
+    if (!view) return;
+    const isAttacker = view.attacker === view.you;
+    const canChoose =
+      (view.phase === 'set' && isAttacker && !view.wiredCommitted) ||
+      (view.phase === 'sit' && !isAttacker && view.sittingChair === null);
+    if (!canChoose) return;
     this.theater.setSelected(chair);
     this.ui.setPendingChair(chair);
   }
 
   private onChairPick(chair: number): void {
     const view = this.session?.view;
-    if (!view || view.phase !== 'commit') return;
-    if (view.players[view.you].committed) return;
+    if (!view) return;
+    const isAttacker = view.attacker === view.you;
+    const canChoose =
+      (view.phase === 'set' && isAttacker && !view.wiredCommitted) ||
+      (view.phase === 'sit' && !isAttacker && view.sittingChair === null);
+    if (!canChoose) return;
     this.theater.audio.play('click');
     this.previewChair(this.ui.pending === chair ? null : chair);
   }
@@ -478,9 +500,22 @@ export class App {
       return;
     }
     this.theater.audio.play('click');
-    this.ui.setLocalCommitted(true);
-    this.theater.setSelected(chair);
+    this.ui.setLocalActionPending(true);
+    this.ui.setPendingChair(null);
+    this.theater.setSelected(null);
     this.theater.setEnabled(false);
+  }
+
+  private pressButton(): void {
+    if (!this.session) return;
+    const result = this.session.pressButton();
+    if (!result.ok) {
+      this.ui.showToast(result.message ?? 'ボタンを押せません');
+      return;
+    }
+    this.theater.audio.play('click');
+    this.ui.setLocalActionPending(true);
+    this.theater.setButtonActive(false);
   }
 
   private rematch(): void {

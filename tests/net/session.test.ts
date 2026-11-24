@@ -36,7 +36,7 @@ function makeHarness(
   options: {
     now?: () => number;
     startingAttacker?: 0 | 1;
-    config?: { commitMs?: number; revealMs?: number; resultMs?: number };
+    config?: { setMs?: number; sitMs?: number; pressMs?: number; resultMs?: number };
   } = {},
 ): Harness {
   const bus = new MemoryBus();
@@ -58,8 +58,6 @@ function makeHarness(
   });
   host.on('view', (view) => hostViews.push(view));
 
-  // The guest can be created after the host published; the session sends a
-  // hello and the host replies with the latest snapshot.
   const guest = new MatchSession({
     transport: guestTransport,
     selfId: 'guest',
@@ -101,22 +99,32 @@ describe('MatchSession', () => {
   it('starts a match on the host and syncs the guest', async () => {
     const h = harness();
     await flush();
-    expect(h.host.view?.phase).toBe('commit');
+    expect(h.host.view?.phase).toBe('set');
     expect(h.host.view?.turn).toBe(1);
+    expect(h.host.view?.attacker).toBe(0);
     expect(h.guest.view).not.toBeNull();
     expect(h.guest.view?.matchId).toBe(h.host.view?.matchId);
     expect(h.guest.view?.you).toBe(1);
-    expect(h.guest.view?.phase).toBe('commit');
+    expect(h.guest.view?.phase).toBe('set');
   });
 
-  it('plays a full turn through commit and reveal', async () => {
+  it('plays set → sit → press and applies the chair score', async () => {
     const h = harness();
     await flush();
 
-    expect(h.host.view?.attacker).toBe(0);
     expect(h.host.chooseChair(12)).toEqual({ ok: true });
     await flush();
+    expect(h.guest.view?.phase).toBe('sit');
+    expect(h.guest.view?.wiredCommitted).toBe(true);
+    expect(h.guest.view?.sittingChair).toBeNull();
+
     expect(h.guest.chooseChair(1)).toEqual({ ok: true });
+    await flush(20);
+    expect(h.guest.view?.phase).toBe('press');
+    expect(h.guest.view?.sittingChair).toBe(1);
+    expect(h.guest.view?.lastResult).toBeNull();
+
+    expect(h.host.pressButton()).toEqual({ ok: true });
     await flush(20);
 
     expect(h.host.view?.phase).toBe('result');
@@ -132,58 +140,98 @@ describe('MatchSession', () => {
     expect(h.guest.view?.availableChairs).not.toContain(1);
   });
 
-  it('never reveals a choice to the guest before the result', async () => {
+  it('keeps the wired chair hidden until the button press', async () => {
     const h = harness();
     await flush();
     h.host.chooseChair(7);
     await flush();
-    // The guest can see that the host committed (hash) but not the chair.
-    const guestView = h.guest.view;
-    expect(guestView?.phase).toBe('commit');
-    expect(guestView?.commitments[0]).toMatch(/^[0-9a-f]{16}$/);
-    expect(JSON.stringify(guestView)).not.toContain('wiredChair');
-    expect(guestView?.lastResult).toBeNull();
+    const afterSet = h.guest.view;
+    expect(afterSet?.phase).toBe('sit');
+    expect(afterSet?.wiredCommitted).toBe(true);
+    expect(afterSet?.sittingChair).toBeNull();
+    expect(JSON.stringify(afterSet)).not.toContain('wiredChair');
+    expect(afterSet?.lastResult).toBeNull();
+  });
+
+  it('supports a guest attacker pressing the button', async () => {
+    const h = harness({ startingAttacker: 1 });
+    await flush();
+    expect(h.guest.view?.attacker).toBe(1);
+
+    expect(h.guest.chooseChair(9)).toEqual({ ok: true });
+    await flush();
+    expect(h.host.view?.phase).toBe('sit');
+    expect(h.host.chooseChair(4)).toEqual({ ok: true });
+    await flush(20);
+    expect(h.host.view?.phase).toBe('press');
+    expect(h.guest.pressButton()).toEqual({ ok: true });
+    await flush(20);
+
+    expect(h.host.view?.phase).toBe('result');
+    expect(h.host.view?.lastResult).toMatchObject({ wiredChair: 9, sittingChair: 4 });
   });
 
   it('auto-advances after the result deadline', async () => {
     let now = 1_000_000;
     const h = harness({
       now: () => now,
-      config: { commitMs: 1_000, revealMs: 1_000, resultMs: 500 },
+      config: { setMs: 1_000, sitMs: 1_000, pressMs: 1_000, resultMs: 500 },
     });
     await flush();
     h.host.chooseChair(12);
     await flush();
     h.guest.chooseChair(1);
     await flush(20);
+    h.host.pressButton();
+    await flush(20);
     expect(h.host.view?.phase).toBe('result');
 
     now += 500;
     h.host.tick();
     await flush(20);
-    expect(h.host.view?.phase).toBe('commit');
+    expect(h.host.view?.phase).toBe('set');
     expect(h.host.view?.turn).toBe(2);
     expect(h.guest.view?.turn).toBe(2);
     expect(h.host.view?.attacker).toBe(1);
+    expect(h.host.view?.sittingChair).toBeNull();
   });
 
-  it('forfeits the guest if it misses the commit deadline', async () => {
+  it('forfeits the defender if it misses the sit deadline', async () => {
     let now = 1_000_000;
     const h = harness({
       now: () => now,
-      config: { commitMs: 1_000, revealMs: 1_000, resultMs: 1_000 },
+      config: { setMs: 1_000, sitMs: 1_000, pressMs: 1_000, resultMs: 1_000 },
     });
     await flush();
     h.host.chooseChair(4);
     await flush();
 
-    // The guest never chooses. The host waits for the deadline.
     now += 1_000;
     h.host.tick();
     await flush(20);
     expect(h.host.view?.phase).toBe('finished');
     expect(h.host.view?.outcome).toEqual({ kind: 'win', winner: 0, reason: 'forfeit' });
     expect(h.guest.view?.outcome).toEqual({ kind: 'win', winner: 0, reason: 'forfeit' });
+  });
+
+  it('forfeits the attacker if it misses the press deadline', async () => {
+    let now = 1_000_000;
+    const h = harness({
+      now: () => now,
+      config: { setMs: 1_000, sitMs: 1_000, pressMs: 1_000, resultMs: 1_000 },
+    });
+    await flush();
+    h.host.chooseChair(4);
+    await flush();
+    h.guest.chooseChair(8);
+    await flush(20);
+    expect(h.host.view?.phase).toBe('press');
+
+    now += 1_000;
+    h.host.tick();
+    await flush(20);
+    expect(h.host.view?.phase).toBe('finished');
+    expect(h.host.view?.outcome).toEqual({ kind: 'win', winner: 1, reason: 'forfeit' });
   });
 
   it('can rematch after the match is finished', async () => {
@@ -197,17 +245,19 @@ describe('MatchSession', () => {
     h.host.rematch();
     h.guest.rematch();
     await flush(30);
-    expect(h.host.view?.phase).toBe('commit');
+    expect(h.host.view?.phase).toBe('set');
     expect(h.host.view?.matchId).not.toBe(oldMatchId);
     expect(h.guest.view?.matchId).toBe(h.host.view?.matchId);
     expect(h.guest.view?.turn).toBe(1);
     expect(h.guest.view?.players[0].points).toBe(0);
 
-    // The guest's per-turn state must reset even though turn 1 repeats.
-    expect(h.guest.chooseChair(5)).toEqual({ ok: true });
+    // Turn 1 repeats, but the guest can sit again in the new match.
+    expect(h.host.chooseChair(5)).toEqual({ ok: true });
+    await flush();
+    expect(h.guest.chooseChair(6)).toEqual({ ok: true });
     await flush(20);
-    expect(h.guest.hasCommittedThisTurn).toBe(true);
-    expect(h.host.view?.players[1].committed).toBe(true);
+    expect(h.host.view?.phase).toBe('press');
+    expect(h.guest.view?.sittingChair).toBe(6);
   });
 
   it('rejects an out-of-turn chair choice', async () => {
@@ -215,9 +265,11 @@ describe('MatchSession', () => {
     await flush();
     h.host.chooseChair(3);
     await flush();
-    h.host.chooseChair(4);
-    expect(h.host.view?.phase).toBe('commit');
-    expect(h.host.hasCommittedThisTurn).toBe(true);
+    expect(h.guest.chooseChair(4)).toEqual({ ok: true });
+    await flush(20);
+    expect(h.host.view?.phase).toBe('press');
+    const lateChoice = h.guest.chooseChair(5);
+    expect(lateChoice.ok).toBe(false);
   });
 
   it('runs a complete bot-vs-bot match', async () => {
@@ -226,7 +278,7 @@ describe('MatchSession', () => {
     const detachGuest = attachBot(h.guest, { delayMs: 0, timers: false, seed: 'bot-g' });
     const detachHost = attachBot(h.host, { delayMs: 0, timers: false, seed: 'bot-h' });
 
-    for (let i = 0; i < 400 && h.host.view?.phase !== 'finished'; i += 1) {
+    for (let i = 0; i < 600 && h.host.view?.phase !== 'finished'; i += 1) {
       await flush(4);
       if (h.host.view?.phase === 'result') h.host.advance();
     }

@@ -28,6 +28,7 @@ export interface UICallbacks {
   onLeave: () => void;
   onPreviewChair: (chair: number | null) => void;
   onConfirmChair: (chair: number) => void;
+  onPress: () => void;
   onAdvance: () => void;
   onRematch: () => void;
   onForfeit: () => void;
@@ -44,8 +45,9 @@ export interface ChatEntry {
 }
 
 const PHASE_LABEL: Record<string, string> = {
-  commit: '椅子を選択',
-  reveal: '公開待ち',
+  set: '電気イスを仕掛ける',
+  sit: '椅子を選ぶ',
+  press: 'ボタンを押す',
   result: '判定',
   finished: '試合終了',
 };
@@ -97,7 +99,11 @@ export class GameUI {
   private statusEl: HTMLElement | null = null;
   private confirmButton: HTMLButtonElement | null = null;
   private readyState = false;
-  private localCommitted = false;
+  private lastPhase: string | null = null;
+  private pressButton: HTMLButtonElement | null = null;
+  private chairDrawer: HTMLElement | null = null;
+  private gridToggle: HTMLButtonElement | null = null;
+  private localActionPending = false;
   private resultRenderedTurn = -1;
   private winnerRenderedKey = '';
   private scoreSubmitted = false;
@@ -296,7 +302,8 @@ export class GameUI {
     this.currentView = view;
     this.pendingChair = null;
     this.lastTurn = -1;
-    this.localCommitted = false;
+    this.lastPhase = null;
+    this.localActionPending = false;
     this.resultRenderedTurn = -1;
     this.winnerRenderedKey = '';
     this.scoreSubmitted = false;
@@ -323,10 +330,14 @@ export class GameUI {
         </div>
         <div class="hint" id="hud-hint">椅子を選んでください</div>
         <div class="bottom-panel">
-          <div class="chair-grid" id="chair-grid"></div>
+          <div class="chair-drawer hidden" id="chair-drawer">
+            <div class="chair-grid" id="chair-grid"></div>
+          </div>
           <div class="actions">
+            <button class="btn ghost small" id="btn-grid">椅子一覧</button>
             <span class="status" id="hud-status">椅子を選択</span>
             <button class="btn primary" id="btn-confirm" disabled>この椅子で決定</button>
+            <button class="btn press hidden" id="btn-press">電流を流す</button>
             <button class="btn ghost small" id="btn-forfeit">降参</button>
             ${options.online ? '<button class="btn ghost small" id="btn-chat">CHAT</button>' : ''}
           </div>
@@ -373,12 +384,20 @@ export class GameUI {
     this.turnEl = this.screenHost.querySelector('#hud-turn');
     this.statusEl = this.screenHost.querySelector('#hud-status');
     this.confirmButton = this.screenHost.querySelector('#btn-confirm');
+    this.pressButton = this.screenHost.querySelector('#btn-press');
+    this.chairDrawer = this.screenHost.querySelector('#chair-drawer');
+    this.gridToggle = this.screenHost.querySelector('#btn-grid');
     this.resultOverlay = null;
     this.winnerOverlay = null;
 
     this.confirmButton?.addEventListener('click', () => {
       if (this.pendingChair === null) return;
+      this.chairDrawer?.classList.add('hidden');
       this.callbacks.onConfirmChair(this.pendingChair);
+    });
+    this.pressButton?.addEventListener('click', () => this.callbacks.onPress());
+    this.gridToggle?.addEventListener('click', () => {
+      this.chairDrawer?.classList.toggle('hidden');
     });
     this.screenHost.querySelector('#btn-forfeit')?.addEventListener('click', () => {
       this.callbacks.onForfeit();
@@ -412,17 +431,18 @@ export class GameUI {
       return;
     }
     const self = view.you;
-    const me = view.players[self];
+    const isAttacker = view.attacker === self;
+    const isDefender = !isAttacker;
 
     for (const index of [0, 1] as const) {
       const card = this.playerCards[index];
       if (!card) continue;
       const player = view.players[index];
-      const isAttacker = view.attacker === index;
-      card.classList.toggle('attacker', isAttacker);
-      card.classList.toggle('defender', !isAttacker);
+      const attackerCard = view.attacker === index;
+      card.classList.toggle('attacker', attackerCard);
+      card.classList.toggle('defender', !attackerCard);
       card.querySelector('.role')!.textContent =
-        `${isAttacker ? '攻撃側 / ATTACKER' : '守備側 / DEFENDER'}${index === self ? ' ・ YOU' : ''}`;
+        `${attackerCard ? '攻撃側 / ATTACKER' : '守備側 / DEFENDER'}${index === self ? ' ・ YOU' : ''}`;
       card.querySelector('.name')!.textContent = player.name;
       card.querySelector('.points')!.innerHTML = `${player.points}<small>pt</small>`;
       const shocks = card.querySelector('.shocks')!;
@@ -437,32 +457,43 @@ export class GameUI {
     }
     if (this.phaseEl) this.phaseEl.textContent = PHASE_LABEL[view.phase] ?? view.phase;
 
+    const phaseChanged = this.lastPhase !== view.phase;
     if (this.lastTurn !== view.turn) {
       this.lastTurn = view.turn;
-      this.pendingChair = null;
-      this.localCommitted = false;
       this.resultRenderedTurn = -1;
     }
-
-    const committed = me.committed || this.localCommitted;
-    if (
-      view.phase === 'commit' &&
-      !committed &&
-      this.pendingChair !== null &&
-      view.retiredChairs.includes(this.pendingChair)
-    ) {
+    if (phaseChanged) {
       this.pendingChair = null;
+      this.localActionPending = false;
     }
+    this.lastPhase = view.phase;
+    if (view.phase === 'set' && view.wiredCommitted) this.pendingChair = null;
+    if (view.phase === 'sit' && view.sittingChair !== null) this.pendingChair = null;
+
+    const canSet =
+      view.phase === 'set' && isAttacker && !view.wiredCommitted && !this.localActionPending;
+    const canSit =
+      view.phase === 'sit' && isDefender && view.sittingChair === null && !this.localActionPending;
+    const canPress = view.phase === 'press' && isAttacker && !this.localActionPending;
+    const canChoose = canSet || canSit;
 
     if (this.hintEl) {
-      if (view.phase === 'commit') {
-        this.hintEl.textContent = committed
-          ? '選択済み。相手のコミットを待っています…'
-          : view.attacker === self
-            ? '電流を仕掛ける椅子を選べ'
-            : '座る椅子を選べ。相手の思惑を読め';
-      } else if (view.phase === 'reveal') {
-        this.hintEl.textContent = '両者の選択を公開中…';
+      if (view.phase === 'set') {
+        this.hintEl.textContent = isAttacker
+          ? view.wiredCommitted
+            ? 'セット完了。守備側の着席を待っています…'
+            : '電気イスを仕掛ける椅子を選べ'
+          : '攻撃側が電気イスを仕掛けています…';
+      } else if (view.phase === 'sit') {
+        this.hintEl.textContent = isDefender
+          ? view.sittingChair !== null
+            ? '着席完了。相手のボタンを待っています…'
+            : '座る椅子を選べ。相手の仕掛けを読め'
+          : '守備側が椅子を選んでいます…';
+      } else if (view.phase === 'press') {
+        this.hintEl.textContent = isAttacker
+          ? '前方の台座のボタンを押せ'
+          : `あなたは ${view.sittingChair ?? '?'}番。相手がボタンを押すのを待っています…`;
       } else if (view.phase === 'result') {
         const result = view.lastResult;
         if (!result) {
@@ -479,14 +510,20 @@ export class GameUI {
     }
 
     if (this.statusEl) {
-      if (view.phase === 'commit') {
-        this.statusEl.textContent = committed
-          ? '相手の選択を待っています…'
-          : view.attacker === self
-            ? '仕掛ける椅子を選択'
-            : '座る椅子を選択';
-      } else if (view.phase === 'reveal') {
-        this.statusEl.textContent = '公開待ち…';
+      if (view.phase === 'set') {
+        this.statusEl.textContent = isAttacker
+          ? view.wiredCommitted
+            ? 'セット済み・相手の着席待ち'
+            : '仕掛ける椅子を選択'
+          : '攻撃側のセット待ち…';
+      } else if (view.phase === 'sit') {
+        this.statusEl.textContent = isDefender
+          ? view.sittingChair !== null
+            ? '着席済み・相手のボタン待ち'
+            : '座る椅子を選択'
+          : '守備側の着席待ち…';
+      } else if (view.phase === 'press') {
+        this.statusEl.textContent = isAttacker ? 'ボタンを押してください' : '相手のボタン待ち…';
       } else if (view.phase === 'result') {
         this.statusEl.textContent = '判定';
       } else {
@@ -496,14 +533,19 @@ export class GameUI {
 
     this.updateChairButtons();
     if (this.confirmButton) {
-      const disabled = view.phase !== 'commit' || committed || this.pendingChair === null;
-      this.confirmButton.classList.toggle('hidden', view.phase !== 'commit');
-      this.confirmButton.disabled = disabled;
-      this.confirmButton.textContent = committed ? '選択済み' : 'この椅子で決定';
+      this.confirmButton.classList.toggle('hidden', !canChoose);
+      this.confirmButton.disabled = !canChoose || this.pendingChair === null;
+      this.confirmButton.textContent = canSet ? 'この椅子に仕掛ける' : 'この椅子に座る';
     }
-    this.screenHost
-      .querySelector('#btn-confirm')
-      ?.classList.toggle('hidden', view.phase !== 'commit' || committed);
+    if (this.pressButton) {
+      this.pressButton.classList.toggle('hidden', !canPress);
+    }
+    if (this.gridToggle) {
+      this.gridToggle.classList.toggle('hidden', !canChoose);
+    }
+    if (!canChoose) {
+      this.chairDrawer?.classList.add('hidden');
+    }
     this.screenHost
       .querySelector('#btn-forfeit')
       ?.classList.toggle('hidden', view.phase === 'finished' || view.phase === 'result');
@@ -520,25 +562,20 @@ export class GameUI {
     this.updateCountdown();
   }
 
-  setLocalCommitted(committed: boolean): void {
-    this.localCommitted = committed;
-    if (this.currentView) this.updateView(this.currentView);
-  }
-
   private updateChairButtons(): void {
     const view = this.currentView;
     if (!view) return;
-    const me = view.players[view.you];
-    const committed = me.committed || this.localCommitted;
+    const isAttacker = view.attacker === view.you;
+    const canChoose =
+      !this.localActionPending &&
+      ((view.phase === 'set' && isAttacker && !view.wiredCommitted) ||
+        (view.phase === 'sit' && !isAttacker && view.sittingChair === null));
     for (const [chair, button] of this.chairButtons) {
       const retired = view.retiredChairs.includes(chair);
+      const selected = this.pendingChair === chair || view.sittingChair === chair;
       button.classList.toggle('retired', retired);
-      button.classList.toggle('selected', this.pendingChair === chair);
-      button.disabled =
-        retired ||
-        view.phase !== 'commit' ||
-        committed ||
-        (view.phase === 'commit' && !view.availableChairs.includes(chair));
+      button.classList.toggle('selected', selected);
+      button.disabled = retired || !canChoose || !view.availableChairs.includes(chair);
     }
   }
 
@@ -707,6 +744,11 @@ export class GameUI {
     this.pendingChair = chair;
     this.updateChairButtons();
     if (this.confirmButton) this.confirmButton.disabled = chair === null;
+  }
+
+  setLocalActionPending(pending: boolean): void {
+    this.localActionPending = pending;
+    if (this.currentView) this.updateView(this.currentView);
   }
 
   get pending(): number | null {
