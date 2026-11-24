@@ -30,6 +30,17 @@ if [[ -f "$TITLE" ]]; then
   encode "$TITLE" "$TITLE" -codec:a libmp3lame -b:a 128k
 fi
 
+INNOVATION="$ROOT/public/assets/audio/bgm/innovation.mp3"
+if [[ -f "$INNOVATION" ]]; then
+  # assets:sync copies the 55 MB WAV bytes under the .mp3 name; only convert
+  # when the file is still RIFF/WAV, so repeated release runs do not double-encode.
+  if [[ "$(head -c 4 "$INNOVATION")" == "RIFF" ]]; then
+    encode "$INNOVATION" "$INNOVATION" -codec:a libmp3lame -b:a 128k
+  else
+    echo "innovation.mp3 is already compressed"
+  fi
+fi
+
 FINAL="$ROOT/public/assets/video/final-thunder.mp4"
 if [[ -f "$FINAL" ]]; then
   encode "$FINAL" "$FINAL" \

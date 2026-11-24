@@ -18,6 +18,7 @@
 - 2 画面のローカル対戦ハーネス（本物のプロトコルをそのまま使用）
 - 3D ステージ（時計状の椅子配置、スポットライト、雷エフェクト、Bloom）
 - CPU 戦、結果画面、再戦、チャット、効果音、FINAL THUNDER カットイン
+- 対戦中は Innovation.wav を BGM として再生し、各ラウンド開始時に「ROUND N」コール
 - 旧 Unity プロジェクトの椅子モデル・ロゴ・時計・BGM・SE・動画を再利用
 
 ## クイックスタート
@@ -46,6 +47,7 @@ pnpm dev
 | `pnpm test:e2e`                | Playwright のスモークテスト             |
 | `pnpm simulate --matches 1000` | ボット同士のヘッドレス対戦              |
 | `pnpm assets:sync`             | 旧 Unity から画像・音声・モデルをコピー |
+| `pnpm assets:voice`            | ROUND コール音声を Piper TTS で再生成   |
 | `pnpm verify`                  | typecheck + lint + test + build         |
 
 ## ディレクトリ

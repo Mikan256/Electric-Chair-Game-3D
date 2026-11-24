@@ -84,6 +84,7 @@ export class App {
   private lastCutInTurn = -1;
   private lastPhase: string | null = null;
   private lastViewTurn = -1;
+  private lastRoundCalled = -1;
   private disposed = false;
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
@@ -231,7 +232,6 @@ export class App {
       players,
       isHost: true,
       startingAttacker: this.query.attacker,
-      now: Date.now,
       timers: true,
     });
     const guest = new MatchSession({
@@ -239,7 +239,6 @@ export class App {
       selfId: 'cpu',
       players,
       isHost: false,
-      now: Date.now,
       timers: true,
     });
     this.soloHost = host;
@@ -427,6 +426,10 @@ export class App {
       this.lastCutInTurn = -1;
       this.lastPhase = null;
       this.lastViewTurn = -1;
+      this.lastRoundCalled = -1;
+      this.theater.audio.stopBgm(350);
+      this.theater.audio.preloadRounds();
+      void this.theater.audio.playGameBgm(0.22);
       this.theater.resetInteractions();
       this.theater.setIdle(false);
       this.ui.showGame(view, options);
@@ -461,10 +464,21 @@ export class App {
       }
     }
     this.lastPhase = view.phase;
+    if (newMatch || view.turn !== this.lastRoundCalled) {
+      this.lastRoundCalled = view.turn;
+      this.ui.showRoundCall(view.turn, view.config.maxTurns, () =>
+        this.theater.audio.announceRound(view.turn),
+      );
+    }
     this.theater.setEnabled(canSelect);
     this.theater.setButtonActive(view.phase === 'press' && isAttacker);
     if (view.phase === 'finished' && view.outcome?.kind === 'win') {
       this.theater.audio.stopHeartbeat();
+    }
+    if (view.phase === 'finished') {
+      this.theater.audio.stopGameBgm(1200);
+      this.theater.audio.stopHeartbeat();
+      this.theater.audio.stopRoundVoice();
     }
   }
 
@@ -531,6 +545,9 @@ export class App {
   private leave(): void {
     this.resetSession();
     this.theater.audio.stopHeartbeat();
+    this.theater.audio.stopGameBgm(300);
+    this.theater.audio.stopRoundVoice();
+    this.ui.clearRoundCall();
     this.theater.setIdle(true);
     this.theater.resetInteractions();
     this.theater.setAvatarsVisible(true);

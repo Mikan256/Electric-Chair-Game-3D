@@ -80,6 +80,7 @@ const files = {
 
   // Audio
   'audio/bgm/title.mp3': 'BGM/MusMus-BGM-168.mp3',
+  'audio/bgm/innovation.mp3': 'BGM/Innovation.wav',
   'audio/bgm/heartbeat.mp3': 'BGM/Heartbeat03-1(Slow-Reverb).mp3',
   'audio/se/electric.mp3': 'BGM/nc383878_【効果音】電流・その1・ビリビリ.mp3',
   'audio/se/chair.mp3': 'BGM/Onoma-Syakiin04-2(Short).mp3',
@@ -88,20 +89,34 @@ const files = {
 
 // `Innovation.wav` (55 MB) is intentionally not shipped; see CREDITS.txt.
 
+/**
+ * Generated in-repo with Piper TTS (scripts/generate-round-voice.sh). These are
+ * not copied from the legacy Unity project, but they live in the same manifest
+ * so the release hash check and loaders see one consistent asset list.
+ */
+const generated = Object.fromEntries(
+  Array.from({ length: 8 }, (_, index) => [
+    `audio/voice/round-${index + 1}.mp3`,
+    `Piper TTS "Round ${index + 1}" (en_US-joe-medium, CC0)`,
+  ]),
+);
+
 const credits = `# Asset credits / 来歴
 
 このディレクトリのアセットは、リポジトリ内の旧 Unity プロジェクト
-(\`Electric-Chair-Game/\`) から \`scripts/sync-assets.mjs\` でコピーしたものです。
+(\`Electric-Chair-Game/\`) から \`scripts/sync-assets.mjs\` でコピーしたものと、
+このリポジトリ内で生成したラウンドコール音声で構成されています。
 
 - 企画・一部素材: ダンボールみかん箱 (Danball Mikan Box)
-- BGM: MusMus (「MusMus-BGM-168」ほか)
+- BGM: MusMus (「MusMus-BGM-168」ほか)、Innovation.wav（旧プロジェクト同梱）
 - 効果音: 効果音ラボ、Onoma
 - 3D/エフェクト素材: DEVNIK 2D, FX_Kandol_Pack, GabrielAguiarProductions, LightningBolt
 - UI: Sci-Fi UI (zekton font を含む)
 - 3D アバター形式: UniVRM / VRM
+- ラウンドコール音声: Piper TTS (MIT) + en_US-joe-medium (CC0) で生成
 
 元の Unity プロジェクトの \`LICENSE\` と各 Asset Store のライセンスに従ってください。
-\`Innovation.wav\` (55 MB) はビルドサイズ削減のためコピーしていません。
+\`Innovation.wav\` (55 MB) はビルドサイズ削減のため、圧縮した MP3 のみ同梱しています。
 
 Flaxia の ZIP 拡張子許可リストに合わせて、FBX/VRM のバイナリは \`.data\` として保存しています
 （three.js の FBXLoader / GLTFLoader は拡張子ではなく内容で判定します）。
@@ -111,20 +126,23 @@ Flaxia の ZIP 拡張子許可リストに合わせて、FBX/VRM のバイナリ
 `;
 
 async function main() {
+  const manifestOnly = process.argv.includes('--manifest-only');
   await mkdir(targetRoot, { recursive: true });
   const missing = [];
 
-  for (const [targetRel, sourceRel] of Object.entries(files)) {
-    const source = join(sourceRoot, sourceRel);
-    const target = join(targetRoot, targetRel);
-    try {
-      await stat(source);
-      await mkdir(dirname(target), { recursive: true });
-      await copyFile(source, target);
-      console.log(`✓ ${targetRel.padEnd(36)} ← ${sourceRel}`);
-    } catch (error) {
-      missing.push({ targetRel, sourceRel, error: String(error) });
-      console.warn(`✗ ${targetRel} (missing: ${sourceRel})`);
+  if (!manifestOnly) {
+    for (const [targetRel, sourceRel] of Object.entries(files)) {
+      const source = join(sourceRoot, sourceRel);
+      const target = join(targetRoot, targetRel);
+      try {
+        await stat(source);
+        await mkdir(dirname(target), { recursive: true });
+        await copyFile(source, target);
+        console.log(`✓ ${targetRel.padEnd(36)} ← ${sourceRel}`);
+      } catch (error) {
+        missing.push({ targetRel, sourceRel, error: String(error) });
+        console.warn(`✗ ${targetRel} (missing: ${sourceRel})`);
+      }
     }
   }
 
@@ -134,11 +152,13 @@ async function main() {
 
   // Downscale 8K-class textures before hashing so the manifest matches the
   // committed bytes. Pillow is optional; the committed assets already work.
-  const optimize = spawnSync('python3', [join(root, 'scripts', 'optimize-assets.py')], {
-    stdio: 'inherit',
-  });
-  if (optimize.error) {
-    console.warn('Pillow が見つからないため画像の最適化をスキップしました。');
+  if (!manifestOnly) {
+    const optimize = spawnSync('python3', [join(root, 'scripts', 'optimize-assets.py')], {
+      stdio: 'inherit',
+    });
+    if (optimize.error) {
+      console.warn('Pillow が見つからないため画像の最適化をスキップしました。');
+    }
   }
 
   const manifest = { generatedAt: new Date().toISOString(), assets: {} };
@@ -156,6 +176,23 @@ async function main() {
       total += info.size;
     } catch {
       // already reported above
+    }
+  }
+
+  for (const [targetRel, source] of Object.entries(generated)) {
+    const target = join(targetRoot, targetRel);
+    try {
+      const info = await stat(target);
+      const bytes = await readFile(target);
+      manifest.assets[targetRel] = {
+        source,
+        generated: true,
+        bytes: info.size,
+        sha256: createHash('sha256').update(bytes).digest('hex'),
+      };
+      total += info.size;
+    } catch {
+      console.warn(`✗ ${targetRel} (run scripts/generate-round-voice.sh)`);
     }
   }
 

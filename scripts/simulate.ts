@@ -77,31 +77,31 @@ export function simulateMatch(seed: string): SimulationResult {
     const wiredChair = choose(rng, rows);
     const sittingChair = choose(rng, rows);
     const salt = `${seed}:${state.turn}:${attacker}`;
-    const now = 1_700_000_000_000 + guard * 60_000;
 
-    const set = applyAction(
-      state,
-      { type: 'set', player: attacker, hash: commitmentHash(wiredChair, salt) },
-      now,
-    );
+    const set = applyAction(state, {
+      type: 'set',
+      player: attacker,
+      hash: commitmentHash(wiredChair, salt),
+    });
     if (!set.ok) throw new Error(`set failed: ${set.code}`);
     state = set.state;
 
-    const sit = applyAction(state, { type: 'sit', player: defender, chair: sittingChair }, now);
+    const sit = applyAction(state, { type: 'sit', player: defender, chair: sittingChair });
     if (!sit.ok) throw new Error(`sit failed: ${sit.code}`);
     state = sit.state;
 
-    const press = applyAction(
-      state,
-      { type: 'press', player: attacker, chair: wiredChair, salt },
-      now,
-    );
+    const press = applyAction(state, {
+      type: 'press',
+      player: attacker,
+      chair: wiredChair,
+      salt,
+    });
     if (!press.ok) throw new Error(`press failed: ${press.code}`);
     state = press.state;
 
     if (state.lastResult?.hit) hits += 1;
     if (!state.outcome) {
-      const advance = applyAction(state, { type: 'advance' }, now);
+      const advance = applyAction(state, { type: 'advance' });
       if (!advance.ok) throw new Error(`advance failed: ${advance.code}`);
       state = advance.state;
     }

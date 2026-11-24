@@ -27,10 +27,6 @@ export interface MatchConfig {
   readonly shocksToWin: number;
   /** 椅子の数（1〜chairCount）。 */
   readonly chairCount: number;
-  readonly setMs: number;
-  readonly sitMs: number;
-  readonly pressMs: number;
-  readonly resultMs: number;
 }
 
 export const DEFAULT_CONFIG: MatchConfig = {
@@ -38,10 +34,6 @@ export const DEFAULT_CONFIG: MatchConfig = {
   targetPoints: 40,
   shocksToWin: 3,
   chairCount: CHAIR_COUNT,
-  setMs: 30_000,
-  sitMs: 30_000,
-  pressMs: 30_000,
-  resultMs: 7_000,
 };
 
 export interface PlayerIdentity {
@@ -95,8 +87,6 @@ export interface MatchState {
   readonly history: readonly TurnResult[];
   readonly lastResult: TurnResult | null;
   readonly outcome: MatchOutcome | null;
-  /** 現在フェーズの期限（epoch ms）。0 は期限なし。 */
-  readonly deadline: number;
   readonly revision: number;
 }
 
@@ -125,7 +115,6 @@ export interface MatchView {
   readonly history: readonly TurnResult[];
   readonly lastResult: TurnResult | null;
   readonly outcome: MatchOutcome | null;
-  readonly deadline: number;
   readonly revision: number;
   /** このビューを受け取ったプレイヤー。 */
   readonly you: PlayerIndex;
@@ -144,7 +133,6 @@ export type MatchAction =
       readonly salt: string;
     }
   | { readonly type: 'advance' }
-  | { readonly type: 'timeout' }
   | { readonly type: 'forfeit'; readonly player: PlayerIndex };
 
 export type MatchErrorCode =

@@ -75,7 +75,7 @@ main.ts → App
 
 - ルール変更: `tests/game/rules.test.ts` に境界ケースを追加。
 - セッション/プロトコル変更: `tests/net/session.test.ts` に 2 セッションの
-  MemoryBus テストを追加。`timers: false` と `now` 注入で時間を制御する。
+  MemoryBus テストを追加。`timers: false` で定期処理を止めて検証する。
 - UI/導線: `tests/e2e/*.spec.ts` を更新。ハーネスの 2 iframe テストは
   実際の postMessage 経路を検証するので壊さない。
 - 変更後は最低 `pnpm typecheck && pnpm lint && pnpm test`。

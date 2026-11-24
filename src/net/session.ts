@@ -25,8 +25,7 @@ export interface MatchSessionOptions {
   readonly isHost: boolean;
   readonly config?: Partial<MatchConfig>;
   readonly startingAttacker?: PlayerIndex;
-  readonly now?: () => number;
-  /** テストでは false にして tick() を手動で呼ぶ。 */
+  /** テストでは false にしてハートビートを止める。 */
   readonly timers?: boolean;
   readonly heartbeatMs?: number;
 }
@@ -74,7 +73,6 @@ export class MatchSession {
   private readonly transport: Transport;
   private readonly config: Partial<MatchConfig> | undefined;
   private readonly startingAttacker: PlayerIndex | undefined;
-  private readonly now: () => number;
   private readonly useTimers: boolean;
   private readonly heartbeatMs: number;
   private readonly emitter = new Emitter<MatchSessionEvents>();
@@ -87,7 +85,6 @@ export class MatchSession {
   private lastSeq = 0;
   private lastMatchId: string | null = null;
   private hostSeq = 0;
-  private deadlineTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private rematchReady: [boolean, boolean] = [false, false];
   private disposed = false;
@@ -99,7 +96,6 @@ export class MatchSession {
     this.players = options.players;
     this.config = options.config;
     this.startingAttacker = options.startingAttacker;
-    this.now = options.now ?? Date.now;
     this.useTimers = options.timers !== false;
     this.heartbeatMs = options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS;
     this.selfIndex = options.players[0].id === options.selfId ? 0 : 1;
@@ -111,7 +107,6 @@ export class MatchSession {
         players: this.players,
         config: this.config,
         startingAttacker: this.startingAttacker,
-        now: this.now(),
       });
       this.publish();
       this.startHeartbeat();
@@ -178,7 +173,6 @@ export class MatchSession {
     if (!this.currentView) {
       return { ok: false, code: 'NOT_READY', message: 'まだ試合が始まっていません' };
     }
-    this.hostMaybeTimeout();
     const view = this.currentView;
     if (!view) return { ok: false, code: 'NOT_READY', message: '試合が始まっていません' };
 
@@ -233,7 +227,6 @@ export class MatchSession {
   /** 攻撃側が前方の台座のボタンを押す。 */
   pressButton(): { ok: true } | { ok: false; code: string; message: string } {
     if (this.disposed) return { ok: false, code: 'CLOSED', message: 'セッションが終了しています' };
-    this.hostMaybeTimeout();
     const view = this.currentView;
     if (!view) return { ok: false, code: 'NOT_READY', message: '試合が始まっていません' };
     if (view.phase !== 'press') {
@@ -280,14 +273,6 @@ export class MatchSession {
   requestSync(): void {
     if (this.isHost) this.publish();
     else this.send({ t: 'sync', from: this.selfId });
-  }
-
-  tick(): void {
-    if (!this.isHost || !this.state || !this.currentView) return;
-    const deadline = this.currentView.deadline;
-    if (deadline > 0 && this.now() >= deadline) {
-      this.hostApply({ type: 'timeout' });
-    }
   }
 
   dispose(): void {
@@ -357,9 +342,18 @@ export class MatchSession {
           });
           return;
         }
-        this.hostMaybeTimeout();
         if (!this.currentView || this.currentView.phase !== raw.phase) return;
-        this.hostApply(this.fromClientAction(raw.action, 1));
+        const action = this.fromClientAction(raw.action, 1);
+        if (!action) {
+          this.send({
+            t: 'error',
+            from: this.selfId,
+            code: 'INVALID_ACTION',
+            message: '不明なアクションです',
+          });
+          return;
+        }
+        this.hostApply(action);
         break;
       }
       case 'sync': {
@@ -384,7 +378,7 @@ export class MatchSession {
     }
   }
 
-  private fromClientAction(action: ClientAction, player: PlayerIndex): MatchAction {
+  private fromClientAction(action: ClientAction, player: PlayerIndex): MatchAction | null {
     switch (action.type) {
       case 'set':
         return { type: 'set', player, hash: action.hash };
@@ -397,24 +391,13 @@ export class MatchSession {
       case 'forfeit':
         return { type: 'forfeit', player };
       default:
-        return { type: 'timeout' };
-    }
-  }
-
-  private hostMaybeTimeout(): void {
-    if (!this.isHost) return;
-    if (
-      this.currentView &&
-      this.currentView.deadline > 0 &&
-      this.now() >= this.currentView.deadline
-    ) {
-      this.hostApply({ type: 'timeout' });
+        return null;
     }
   }
 
   private hostApply(action: MatchAction): void {
     if (!this.state) return;
-    const result = applyAction(this.state, action, this.now());
+    const result = applyAction(this.state, action);
     if (!result.ok) {
       this.emitter.emit('error', { code: result.code, message: result.message });
       this.send({
@@ -444,7 +427,6 @@ export class MatchSession {
       seq,
       view: createView(this.state, 1),
     });
-    this.armDeadline();
   }
 
   private applyView(view: MatchView): void {
@@ -457,21 +439,6 @@ export class MatchSession {
       this.pendingSecret = null;
     }
     this.emitter.emit('view', view);
-  }
-
-  private armDeadline(): void {
-    if (this.deadlineTimer !== null) {
-      clearTimeout(this.deadlineTimer);
-      this.deadlineTimer = null;
-    }
-    if (!this.useTimers || !this.isHost || !this.currentView) return;
-    const remaining = this.currentView.deadline - this.now();
-    if (this.currentView.deadline <= 0) return;
-    const delay = Math.max(0, Math.min(remaining + 50, 2_147_000_000));
-    this.deadlineTimer = setTimeout(() => {
-      this.deadlineTimer = null;
-      this.tick();
-    }, delay);
   }
 
   private startHeartbeat(): void {
@@ -489,7 +456,6 @@ export class MatchSession {
       players: this.players,
       config: this.config,
       startingAttacker: this.startingAttacker,
-      now: this.now(),
     });
     this.pendingSecret = null;
     this.applyView(createView(this.state, this.selfIndex));
@@ -498,9 +464,7 @@ export class MatchSession {
   }
 
   private clearTimers(): void {
-    if (this.deadlineTimer !== null) clearTimeout(this.deadlineTimer);
     if (this.heartbeatTimer !== null) clearInterval(this.heartbeatTimer);
-    this.deadlineTimer = null;
     this.heartbeatTimer = null;
   }
 }

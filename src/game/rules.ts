@@ -34,7 +34,6 @@ export interface CreateMatchOptions {
   readonly players: readonly [PlayerIdentity, PlayerIdentity];
   readonly startingAttacker?: PlayerIndex;
   readonly config?: Partial<MatchConfig>;
-  readonly now?: number;
   /** 先攻抽選に使うシード。省略時は matchId。 */
   readonly seed?: string;
 }
@@ -69,7 +68,6 @@ export function isChairLegal(state: MatchState, chair: number): boolean {
 }
 
 export function createMatch(options: CreateMatchOptions): MatchState {
-  const now = options.now ?? Date.now();
   const config: MatchConfig = { ...DEFAULT_CONFIG, ...options.config };
   const matchId = options.matchId ?? randomId('match');
   const seed = options.seed ?? matchId;
@@ -92,7 +90,6 @@ export function createMatch(options: CreateMatchOptions): MatchState {
     history: [],
     lastResult: null,
     outcome: null,
-    deadline: now + config.setMs,
     revision: 0,
   };
 }
@@ -109,11 +106,10 @@ function finish(state: MatchState, outcome: MatchOutcome): MatchState {
   return bump(state, {
     phase: 'finished',
     outcome,
-    deadline: 0,
   });
 }
 
-function resolveTurn(state: MatchState, wiredChair: number, now: number): MatchState {
+function resolveTurn(state: MatchState, wiredChair: number): MatchState {
   const sittingChair = state.sittingChair;
   if (sittingChair === null) throw new Error('resolveTurn called without a sitting chair');
 
@@ -181,11 +177,10 @@ function resolveTurn(state: MatchState, wiredChair: number, now: number): MatchS
     lastResult: result,
     outcome,
     phase: 'result',
-    deadline: now + state.config.resultMs,
   });
 }
 
-function nextTurn(state: MatchState, now: number): MatchState {
+function nextTurn(state: MatchState): MatchState {
   if (state.outcome) return finish(state, state.outcome);
   return bump(state, {
     phase: 'set',
@@ -194,15 +189,10 @@ function nextTurn(state: MatchState, now: number): MatchState {
     wiredCommitment: null,
     sittingChair: null,
     wiredChair: null,
-    deadline: now + state.config.setMs,
   });
 }
 
-export function applyAction(
-  state: MatchState,
-  action: MatchAction,
-  now = Date.now(),
-): ActionResult {
+export function applyAction(state: MatchState, action: MatchAction): ActionResult {
   if (state.phase === 'finished') {
     return fail('MATCH_FINISHED', '試合は終了しています');
   }
@@ -230,7 +220,6 @@ export function applyAction(
         state: bump(state, {
           wiredCommitment: action.hash.toLowerCase(),
           phase: 'sit',
-          deadline: now + state.config.sitMs,
         }),
       };
     }
@@ -257,7 +246,6 @@ export function applyAction(
         state: bump(state, {
           sittingChair: action.chair,
           phase: 'press',
-          deadline: now + state.config.pressMs,
         }),
       };
     }
@@ -283,49 +271,14 @@ export function applyAction(
       if (!isChairLegal(state, action.chair)) {
         return fail('INVALID_CHAIR', 'その椅子には仕掛けられません');
       }
-      return { ok: true, state: resolveTurn(state, action.chair, now) };
+      return { ok: true, state: resolveTurn(state, action.chair) };
     }
 
     case 'advance': {
       if (state.phase !== 'result') {
         return fail('INVALID_PHASE', `advance できないフェーズです: ${state.phase}`);
       }
-      return { ok: true, state: nextTurn(state, now) };
-    }
-
-    case 'timeout': {
-      if (state.phase === 'set') {
-        return {
-          ok: true,
-          state: finish(state, {
-            kind: 'win',
-            winner: getDefender(state),
-            reason: 'forfeit',
-          }),
-        };
-      }
-      if (state.phase === 'sit') {
-        return {
-          ok: true,
-          state: finish(state, {
-            kind: 'win',
-            winner: state.attacker,
-            reason: 'forfeit',
-          }),
-        };
-      }
-      if (state.phase === 'press') {
-        return {
-          ok: true,
-          state: finish(state, {
-            kind: 'win',
-            winner: getDefender(state),
-            reason: 'forfeit',
-          }),
-        };
-      }
-      // result: continue automatically
-      return { ok: true, state: nextTurn(state, now) };
+      return { ok: true, state: nextTurn(state) };
     }
 
     case 'forfeit': {
@@ -376,7 +329,6 @@ export function createView(state: MatchState, you: PlayerIndex): MatchView {
     history: state.history,
     lastResult: state.lastResult,
     outcome: state.outcome,
-    deadline: state.deadline,
     revision: state.revision,
     you,
   };

@@ -23,6 +23,49 @@ export interface BuildOptions {
 }
 
 /**
+ * カメラの可動域。部屋の外（背景の虚空）が写り込まないよう、
+ * 方位角・仰角・距離をすべて部屋の内側に収まる範囲へ制限する。
+ */
+interface CameraRig {
+  fov: number;
+  position: readonly [number, number, number];
+  target: readonly [number, number, number];
+  minDistance: number;
+  maxDistance: number;
+  minPolarAngle: number;
+  maxPolarAngle: number;
+  maxAzimuthAngle: number;
+  /** 待機中に首振りする角度（ラジアン）。maxAzimuthAngle より小さくする。 */
+  swayLimit: number;
+}
+
+// 横長画面: 客席側から少し見下ろす固定気味のカメラ。部屋の奥行きに収める。
+const LANDSCAPE_CAMERA: CameraRig = {
+  fov: 44,
+  position: [0, 8.8, 19.6],
+  target: [0, 0.15, 0],
+  minDistance: 15,
+  maxDistance: 24,
+  minPolarAngle: 1.13,
+  maxPolarAngle: 1.3,
+  maxAzimuthAngle: 0.4,
+  swayLimit: 0.22,
+};
+
+// 縦長画面: 12脚すべてが横幅に収まるよう引いた位置から見る。
+const PORTRAIT_CAMERA: CameraRig = {
+  fov: 58,
+  position: [0, 9.2, 26.5],
+  target: [0, 0.15, 0],
+  minDistance: 23,
+  maxDistance: 30,
+  minPolarAngle: 1.22,
+  maxPolarAngle: 1.34,
+  maxAzimuthAngle: 0.3,
+  swayLimit: 0.16,
+};
+
+/**
  * The 3D theatre: a clock-face stage with 12 chairs, cinematic lighting,
  * bloom and selection/result animations.
  */
@@ -52,6 +95,7 @@ export class Theater {
   private animationHandle = 0;
   private hovered: ChairActor | null = null;
   private selected: number | null = null;
+  private readonly retiredChairs = new Set<number>();
   private enabled = false;
   private pressButtonMesh: THREE.Mesh<THREE.CylinderGeometry, THREE.MeshStandardMaterial> | null =
     null;
@@ -65,6 +109,8 @@ export class Theater {
   private avatarsVisible = true;
   private avatarsLoading: Promise<void> | null = null;
   private portrait: boolean | null = null;
+  private idle = true;
+  private swayDirection: 1 | -1 = 1;
 
   constructor(canvas: HTMLCanvasElement, callbacks: TheaterCallbacks = {}) {
     this.canvas = canvas;
@@ -80,20 +126,14 @@ export class Theater {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.72;
 
-    this.camera = new THREE.PerspectiveCamera(46, 1, 0.1, 140);
-    this.camera.position.set(0, 11.5, 19);
+    this.camera = new THREE.PerspectiveCamera(LANDSCAPE_CAMERA.fov, 1, 0.1, 140);
+    this.camera.position.set(...LANDSCAPE_CAMERA.position);
 
     this.controls = new OrbitControls(this.camera, canvas);
-    this.controls.target.set(0, -1.6, 0);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.06;
     this.controls.enablePan = false;
-    this.controls.minDistance = 10;
-    this.controls.maxDistance = 28;
-    this.controls.minPolarAngle = 0.32;
-    this.controls.maxPolarAngle = 1.42;
-    this.controls.autoRotate = true;
-    this.controls.autoRotateSpeed = 0.35;
+    this.controls.autoRotateSpeed = 0.6;
 
     this.scene.fog = new THREE.FogExp2(0x04040a, 0.012);
     this.scene.background = new THREE.Color(0x030307);
@@ -102,7 +142,10 @@ export class Theater {
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.12, 0.25, 1.1);
+    // 白い椅子はライティングで HDR 値が高く、低い threshold だと椅子自体が
+    // 発光しているように bloom してしまう。発光させたいボタン・雷だけが
+    // 残るように threshold を高めに取る。
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.12, 0.25, 4.0);
     if (this.debugParams.get('bloom') !== 'off') this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
 
@@ -180,10 +223,10 @@ export class Theater {
       roughness: 0.36,
     });
 
-    // 部屋の床。カメラ側はオープンなスタジオ。
+    // 部屋の床。カメラ側まで床を伸ばし、足元に虚空が見えないようにする。
     if (this.debugParams.get('floor') !== 'off') {
-      const floor = new THREE.Mesh(new THREE.BoxGeometry(27, 0.2, 28), roomDark);
-      floor.position.set(0, -0.1, 1);
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(30, 0.2, 51), roomDark);
+      floor.position.set(0, -0.1, 11);
       this.scene.add(floor);
     }
 
@@ -206,16 +249,23 @@ export class Theater {
     floorRing.position.y = 0.035;
     this.scene.add(floorRing);
 
-    // 奥の壁と左右の壁。正面（カメラ側）は開けてステージを見せる。
-    const backWall = new THREE.Mesh(new THREE.BoxGeometry(27, 8, 0.35), wallMaterial);
-    backWall.position.set(0, 4, -11.3);
+    // 奥の壁と左右の壁。カメラ側にも壁を回して完全な箱にする。
+    // 壁はカメラの可動域より十分高くし、見上げても空（背景）が出ないようにする。
+    const backWall = new THREE.Mesh(new THREE.BoxGeometry(30, 20, 0.35), wallMaterial);
+    backWall.position.set(0, 10, -11.3);
     this.scene.add(backWall);
 
     for (const x of [-12.4, 12.4] as const) {
-      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.35, 8, 26), wallMaterial);
-      sideWall.position.set(x, 4, 1);
+      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.35, 20, 48), wallMaterial);
+      sideWall.position.set(x, 10, 10.9);
       this.scene.add(sideWall);
     }
+
+    // カメラの背後を塞ぐ壁。可動域の外なので通常は見えないが、
+    // ワイドな画面や揺れでも外側が映り込まないための保険。
+    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(30, 20, 0.35), wallMaterial);
+    frontWall.position.set(0, 10, 35);
+    this.scene.add(frontWall);
 
     // 奥壁のフレームとロゴ。
     const frame = new THREE.Mesh(new THREE.BoxGeometry(7.4, 3.6, 0.18), trimMaterial);
@@ -374,6 +424,19 @@ export class Theater {
     const wallWash = new THREE.PointLight(0xcf9f6a, 18, 16, 2);
     wallWash.position.set(0, 4.2, -7.5);
     this.scene.add(wallWash);
+
+    // 左右と奥の壁をうっすら照らす。暗い壁を完全な黒にせず、
+    // 「部屋の内側にいる」ことが分かる程度の反射だけを残す。
+    const wallWashes: Array<[number, number, number, number, number]> = [
+      [0, 6.5, -7.5, 9, 18],
+      [-10.6, 5.5, 2.5, 7, 15],
+      [10.6, 5.5, 2.5, 7, 15],
+    ];
+    for (const [x, y, z, intensity, distance] of wallWashes) {
+      const sideWash = new THREE.PointLight(0x8b93b0, intensity, distance, 2);
+      sideWash.position.set(x, y, z);
+      this.scene.add(sideWash);
+    }
   }
 
   private buildPedestal(): void {
@@ -514,7 +577,8 @@ export class Theater {
   }
 
   setIdle(idle: boolean): void {
-    this.controls.autoRotate = idle;
+    this.idle = idle;
+    if (!idle) this.controls.autoRotate = false;
   }
 
   setButtonActive(active: boolean): void {
@@ -525,22 +589,34 @@ export class Theater {
   }
 
   setSelected(chair: number | null): void {
+    const next = chair !== null && this.retiredChairs.has(chair) ? null : chair;
     if (this.selected !== null) {
       const previous = this.chairs.get(this.selected);
-      if (previous) previous.setState('available');
+      if (previous && previous.getState() === 'selected') previous.setState('available');
     }
-    this.selected = chair;
-    if (chair !== null) {
-      this.chairs.get(chair)?.setState('selected');
+    this.selected = next;
+    if (next !== null) {
+      this.chairs.get(next)?.setState('selected');
     }
   }
 
   applyView(view: MatchView): void {
     this.setFloorNumberState(view);
+    this.retiredChairs.clear();
+    for (const chair of view.retiredChairs) this.retiredChairs.add(chair);
+    if (this.hovered && this.retiredChairs.has(this.hovered.chair)) this.hovered = null;
+    if (this.selected !== null && this.retiredChairs.has(this.selected)) this.selected = null;
+
     for (const chair of this.chairs.values()) {
-      if (view.retiredChairs.includes(chair.chair)) {
-        chair.setState('retired');
-      } else if (view.sittingChair === chair.chair) {
+      const retired = this.retiredChairs.has(chair.chair);
+      chair.setRetired(retired);
+      if (retired) {
+        // 見えなくするだけでなく、シーングラフからも外して残留させない。
+        chair.group.removeFromParent();
+        continue;
+      }
+      if (chair.group.parent !== this.scene) this.scene.add(chair.group);
+      if (view.sittingChair === chair.chair) {
         chair.setState('selected');
       } else if (chair.chair === this.selected) {
         chair.setState('selected');
@@ -592,10 +668,15 @@ export class Theater {
 
   resetInteractions(): void {
     this.selected = null;
+    this.hovered = null;
+    this.retiredChairs.clear();
     this.lastResultTurn = -1;
     this.confettiPlayed = false;
     this.setButtonActive(false);
-    for (const chair of this.chairs.values()) chair.reset();
+    for (const chair of this.chairs.values()) {
+      chair.reset();
+      if (chair.group.parent !== this.scene) this.scene.add(chair.group);
+    }
     for (const mesh of this.floorNumbers.values()) {
       mesh.material.opacity = 0.92;
       mesh.material.color.setHex(0xffffff);
@@ -614,24 +695,26 @@ export class Theater {
     const portrait = this.camera.aspect < 0.9;
     if (portrait !== this.portrait) {
       this.portrait = portrait;
-      if (portrait) {
-        this.camera.fov = 58;
-        this.camera.position.set(0, 13.5, 23);
-        this.controls.target.set(0, -1.0, 0);
-        this.controls.minDistance = 13;
-        this.controls.maxDistance = 40;
-      } else {
-        this.camera.fov = 41;
-        this.camera.position.set(0, 13.2, 19.8);
-        this.controls.target.set(0, -1.6, 0);
-        this.controls.minDistance = 9;
-        this.controls.maxDistance = 24;
-      }
-      this.controls.update();
+      this.applyCameraRig(portrait ? PORTRAIT_CAMERA : LANDSCAPE_CAMERA);
     }
 
     this.camera.updateProjectionMatrix();
   };
+
+  /** 画面比率ごとのカメラ可動域を適用する。 */
+  private applyCameraRig(rig: CameraRig): void {
+    this.camera.fov = rig.fov;
+    this.camera.position.set(...rig.position);
+    this.controls.target.set(...rig.target);
+    this.controls.minDistance = rig.minDistance;
+    this.controls.maxDistance = rig.maxDistance;
+    this.controls.minPolarAngle = rig.minPolarAngle;
+    this.controls.maxPolarAngle = rig.maxPolarAngle;
+    // 部屋の正面から外れて壁の裏側を見ないよう、首振りを正面付近に固定する。
+    this.controls.minAzimuthAngle = -rig.maxAzimuthAngle;
+    this.controls.maxAzimuthAngle = rig.maxAzimuthAngle;
+    this.controls.update();
+  }
 
   private onPointerMove = (event: PointerEvent): void => {
     const rect = this.canvas.getBoundingClientRect();
@@ -664,10 +747,15 @@ export class Theater {
     }
     this.raycaster.setFromCamera(this.pointer, this.camera);
     const hits = this.raycaster.intersectObjects(this.hitboxes, false);
-    const chairNumber = hits[0]?.object.userData.chair as number | undefined;
+    // 退場済みの椅子はシーンに残っていても選択対象にしない。
+    const hit = hits.find((candidate) => {
+      const chairNumber = candidate.object.userData.chair as number | undefined;
+      return chairNumber !== undefined && !this.retiredChairs.has(chairNumber);
+    });
+    const chairNumber = hit?.object.userData.chair as number | undefined;
     const next = chairNumber ? (this.chairs.get(chairNumber) ?? null) : null;
     if (next === this.hovered) return;
-    if (this.hovered && this.hovered.chair !== this.selected) this.hovered.setState('available');
+    if (this.hovered && this.hovered.getState() === 'hover') this.hovered.setState('available');
     this.hovered = next;
     if (next) {
       const state = next.getState();
@@ -679,11 +767,28 @@ export class Theater {
   }
 
   private clearHover(): void {
-    if (this.hovered && this.hovered.chair !== this.selected) {
+    if (this.hovered && this.hovered.getState() === 'hover') {
       this.hovered.setState('available');
     }
     this.hovered = null;
     this.callbacks.onChairHover?.(null);
+  }
+
+  /**
+   * 待機中は 360° 回り続けず、正面の狭い範囲でゆっくり首を振る。
+   * 真後ろや壁の外側を映さないための制約でもある。
+   */
+  private updateIdleSway(): void {
+    if (!this.idle) return;
+    const offset = this.camera.position.clone().sub(this.controls.target);
+    const theta = Math.atan2(offset.x, offset.z);
+    const rig = this.portrait ? PORTRAIT_CAMERA : LANDSCAPE_CAMERA;
+    if (theta > rig.swayLimit) this.swayDirection = 1;
+    else if (theta < -rig.swayLimit) this.swayDirection = -1;
+    this.controls.autoRotate = true;
+    // OrbitControls は damping 有効時に実効速度が約 1/16 になるため、
+    // 見た目で分かる程度まで数値を上げている。
+    this.controls.autoRotateSpeed = 7 * this.swayDirection;
   }
 
   private animate = (): void => {
@@ -692,6 +797,7 @@ export class Theater {
     const dt = Math.min(0.05, this.clock.getDelta());
     const elapsed = this.clock.elapsedTime;
 
+    this.updateIdleSway();
     this.controls.update();
     this.updateHover();
     this.effects.update(dt);

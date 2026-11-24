@@ -24,9 +24,11 @@
     "test:e2e": "playwright test",
     "assets:sync": "node scripts/sync-assets.mjs",
     "assets:optimize": "python3 scripts/optimize-assets.py",
+    "assets:manifest": "node scripts/sync-assets.mjs --manifest-only",
     "simulate": "tsx scripts/simulate.ts",
     "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
     "assets:compress": "bash scripts/compress-media.sh",
+    "assets:voice": "bash scripts/generate-round-voice.sh",
     "validate:zip": "python3 scripts/validate-flaxia-zip.py",
     "release:flaxia": "node scripts/package-flaxia.mjs"
   },

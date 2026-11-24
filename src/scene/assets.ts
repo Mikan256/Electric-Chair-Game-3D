@@ -170,6 +170,22 @@ function stripSceneHelpers(object: THREE.Object3D): void {
   for (const helper of helpers) helper.removeFromParent();
 }
 
+/**
+ * The legacy Block FBX files carry a baked text mesh ("12") on the face that
+ * points at the centre of the stage.  We draw the real number on the outside
+ * face ourselves, so drop the inner-side text to keep that face clean.
+ */
+function stripBakedNumberText(object: THREE.Object3D): void {
+  const baked: THREE.Object3D[] = [];
+  object.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    const geometryName = child.geometry?.name ?? '';
+    const isText = geometryName === 'テキスト' || geometryName.toLowerCase() === 'text';
+    if (isText && /^\d{1,2}$/.test(child.name)) baked.push(child);
+  });
+  for (const mesh of baked) mesh.removeFromParent();
+}
+
 function prepareChairModel(
   object: THREE.Group,
   chair: number,
@@ -177,6 +193,7 @@ function prepareChairModel(
   seatMaterial: THREE.Material,
 ): THREE.Group {
   stripSceneHelpers(object);
+  stripBakedNumberText(object);
   const wrapper = stripAndCenter(object, 0.92);
 
   let meshCount = 0;

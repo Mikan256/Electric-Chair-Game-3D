@@ -79,14 +79,15 @@ export class GameUI {
   private readonly flashLayer: HTMLElement;
   private readonly toastStack: HTMLElement;
   private readonly cutinLayer: HTMLElement;
+  private readonly roundCallLayer: HTMLElement;
+  private roundCallTimer: ReturnType<typeof setTimeout> | null = null;
+  private roundCallToken = 0;
   private readonly logoUrl = assetUrl(ASSETS.logo);
   private hud: HTMLElement | null = null;
   private chairButtons = new Map<number, HTMLButtonElement>();
   private playerCards: HTMLElement[] = [];
   private resultOverlay: HTMLElement | null = null;
   private winnerOverlay: HTMLElement | null = null;
-  private countdownTimer: ReturnType<typeof setInterval> | null = null;
-  private countdownDeadline = 0;
   private currentView: MatchView | null = null;
   private pendingChair: number | null = null;
   private lastTurn = -1;
@@ -94,7 +95,6 @@ export class GameUI {
   private chatLog: HTMLElement | null = null;
   private hintEl: HTMLElement | null = null;
   private phaseEl: HTMLElement | null = null;
-  private timerEl: HTMLElement | null = null;
   private turnEl: HTMLElement | null = null;
   private statusEl: HTMLElement | null = null;
   private confirmButton: HTMLButtonElement | null = null;
@@ -113,6 +113,7 @@ export class GameUI {
     root.innerHTML = `
       <div class="flash-layer" id="ui-flash"></div>
       <div class="cutin-layer" id="ui-cutin"></div>
+      <div class="round-call-layer" id="ui-round"></div>
       <div class="toast-stack" id="ui-toasts"></div>
       <div id="ui-screen"></div>
     `;
@@ -120,12 +121,80 @@ export class GameUI {
     this.flashLayer = root.querySelector<HTMLElement>('#ui-flash')!;
     this.toastStack = root.querySelector<HTMLElement>('#ui-toasts')!;
     this.cutinLayer = root.querySelector<HTMLElement>('#ui-cutin')!;
+    this.roundCallLayer = root.querySelector<HTMLElement>('#ui-round')!;
+  }
+
+  clearCutIns(): void {
+    this.cutinLayer.replaceChildren();
+  }
+
+  /** ラウンド開始コール。ゲームの進行を止めない。 */
+  showRoundCall(round: number, maxTurns = 8, onShown?: () => void): void {
+    const token = ++this.roundCallToken;
+    if (this.roundCallTimer !== null) {
+      clearTimeout(this.roundCallTimer);
+      this.roundCallTimer = null;
+    }
+    this.roundCallLayer.replaceChildren();
+
+    // 初回のシェーダコンパイル等で 1 フレームが数秒かかることがある。
+    // 落ち着いたフレームを待ってから表示しないと、タイマーだけ進んで
+    // コールが一度も描画されずに消えてしまう。
+    this.waitForStableFrames(token, () => {
+      if (token !== this.roundCallToken) return;
+      this.roundCallLayer.innerHTML = `
+        <div class="round-call">
+          <div class="round-call-kicker">ELECTRIC CHAIR GAME</div>
+          <div class="round-call-main">ROUND ${round}</div>
+          <div class="round-call-sub">第${round}ラウンド / ${maxTurns}</div>
+        </div>
+      `;
+      const call = this.roundCallLayer.querySelector<HTMLElement>('.round-call');
+      if (call) {
+        call.classList.remove('active');
+        void call.offsetWidth;
+        call.classList.add('active');
+      }
+      onShown?.();
+      this.roundCallTimer = setTimeout(() => {
+        if (token !== this.roundCallToken) return;
+        this.roundCallLayer.replaceChildren();
+        this.roundCallTimer = null;
+      }, 2400);
+    });
+  }
+
+  /** 連続してフレームが描画されるまで待つ（=重い初回描画を避ける）。 */
+  private waitForStableFrames(token: number, done: () => void): void {
+    let frames = 0;
+    let last = performance.now();
+    const tick = (now: number): void => {
+      if (token !== this.roundCallToken) return;
+      const delta = now - last;
+      last = now;
+      // 極端に長いフレーム（初回のシェーダコンパイル等）は数え直す。
+      frames = delta <= 2000 ? frames + 1 : 0;
+      if (frames >= 2) {
+        done();
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  clearRoundCall(): void {
+    this.roundCallToken += 1;
+    if (this.roundCallTimer !== null) {
+      clearTimeout(this.roundCallTimer);
+      this.roundCallTimer = null;
+    }
+    this.roundCallLayer.replaceChildren();
   }
 
   // --------------------------------------------------------------- screens
 
   showLoading(progress = 0, label = '読み込み中'): void {
-    this.stopCountdown();
     this.setScreen(`
       <div class="screen loading-screen">
         <img class="loading-logo" src="${this.logoUrl}" alt="電気イスゲーム 3D" />
@@ -149,7 +218,8 @@ export class GameUI {
       embedded: false,
     },
   ): void {
-    this.stopCountdown();
+    this.clearCutIns();
+    this.clearRoundCall();
     this.hud = null;
     this.setScreen(`
       <div class="screen title-screen">
@@ -205,11 +275,12 @@ export class GameUI {
             <div><span>感電</span><strong>自分の累積ポイントが0に</strong></div>
             <div><span>得点した椅子</span><strong>以後使用不可</strong></div>
             <div><span>感電した椅子</span><strong>以後も使用可能</strong></div>
+            <div><span>進行</span><strong>仕掛け → 着席 → ボタン → 判定</strong></div>
             <div><span>勝利条件</span><strong>40pt先取 / 3回感電させる / 8ターン終了時のポイント</strong></div>
           </div>
           <p class="muted">
-            両者は同時に秘密の選択をコミットし、両方の公開が揃ってから判定します。
-            ホストでも相手の選択を先に見ることはできません。
+            攻撃側が電気を仕掛ける椅子を秘密に選び、守備側が座ったあと、攻撃側が前方のボタンを押します。
+            ボタンを押すまで、仕掛けられた椅子はホストにも公開されません。
           </p>
           <div class="row" style="margin-top:20px">
             <button class="btn" id="btn-back">タイトルへ戻る</button>
@@ -223,7 +294,6 @@ export class GameUI {
   }
 
   showLobby(state: LobbyState): void {
-    this.stopCountdown();
     this.hud = null;
     this.readyState = state.players.find((p) => p.id === state.youId)?.isReady ?? false;
     const statusText =
@@ -298,7 +368,6 @@ export class GameUI {
   // ------------------------------------------------------------------ game
 
   showGame(view: MatchView, options: { online: boolean; roomId: string | null }): void {
-    this.stopCountdown();
     this.currentView = view;
     this.pendingChair = null;
     this.lastTurn = -1;
@@ -314,7 +383,6 @@ export class GameUI {
         <div class="hud-top">
           <span class="turn" id="hud-turn">TURN 1 / 8</span>
           <span class="phase" id="hud-phase">椅子を選択</span>
-          <span class="timer" id="hud-timer">--</span>
         </div>
         <div class="player-card left" id="hud-player-0">
           <div class="role">ATTACKER</div>
@@ -380,7 +448,6 @@ export class GameUI {
     ];
     this.hintEl = this.screenHost.querySelector('#hud-hint');
     this.phaseEl = this.screenHost.querySelector('#hud-phase');
-    this.timerEl = this.screenHost.querySelector('#hud-timer');
     this.turnEl = this.screenHost.querySelector('#hud-turn');
     this.statusEl = this.screenHost.querySelector('#hud-status');
     this.confirmButton = this.screenHost.querySelector('#btn-confirm');
@@ -421,7 +488,6 @@ export class GameUI {
       this.showToast(`ROOM: ${options.roomId}`, 'info');
     }
     this.updateView(view);
-    this.startCountdown();
   }
 
   updateView(view: MatchView): void {
@@ -557,9 +623,6 @@ export class GameUI {
     else this.clearResult();
     if (view.phase === 'finished') this.renderWinner(view);
     else this.clearWinner();
-
-    this.countdownDeadline = view.deadline;
-    this.updateCountdown();
   }
 
   private updateChairButtons(): void {
@@ -759,34 +822,7 @@ export class GameUI {
     this.screenHost.innerHTML = html;
   }
 
-  private startCountdown(): void {
-    this.stopCountdown();
-    this.countdownTimer = setInterval(() => this.updateCountdown(), 250);
-  }
-
-  private stopCountdown(): void {
-    if (this.countdownTimer !== null) {
-      clearInterval(this.countdownTimer);
-      this.countdownTimer = null;
-    }
-  }
-
-  private updateCountdown(): void {
-    if (!this.timerEl || !this.currentView) return;
-    const deadline = this.currentView.deadline;
-    if (deadline <= 0) {
-      this.timerEl.textContent = '--';
-      this.timerEl.classList.remove('urgent');
-      return;
-    }
-    const remaining = Math.max(0, deadline - Date.now());
-    const seconds = Math.ceil(remaining / 1000);
-    this.timerEl.textContent = `${seconds}s`;
-    this.timerEl.classList.toggle('urgent', seconds <= 5);
-    void this.countdownDeadline;
-  }
-
   dispose(): void {
-    this.stopCountdown();
+    this.clearRoundCall();
   }
 }

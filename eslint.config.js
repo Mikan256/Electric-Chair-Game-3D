@@ -12,6 +12,8 @@ export default tseslint.config(
       'test-results/**',
       'Electric-Chair-Game/**',
       'public/assets/**',
+      'tmp-*',
+      '.tmp-*',
     ],
   },
   js.configs.recommended,

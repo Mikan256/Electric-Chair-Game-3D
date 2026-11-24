@@ -17,21 +17,13 @@ const PLAYERS = [
 
 const SALT_A = 'a'.repeat(32);
 const SALT_B = 'b'.repeat(32);
-const NOW = 1_700_000_000_000;
 
 function fresh(config: Parameters<typeof createMatch>[0]['config'] = {}): MatchState {
   return createMatch({
     matchId: 'test-match',
     players: PLAYERS,
     startingAttacker: 0,
-    config: {
-      setMs: 30_000,
-      sitMs: 30_000,
-      pressMs: 30_000,
-      resultMs: 7_000,
-      ...config,
-    },
-    now: NOW,
+    config,
   });
 }
 
@@ -45,26 +37,21 @@ function playTurn(
   state: MatchState,
   wiredChair: number,
   sittingChair: number,
-  now = NOW,
   salt = SALT_A,
 ): MatchState {
   const attacker = state.attacker;
   const defender = otherPlayer(attacker);
 
   let next = must(
-    applyAction(
-      state,
-      { type: 'set', player: attacker, hash: commitmentHash(wiredChair, salt) },
-      now,
-    ),
+    applyAction(state, { type: 'set', player: attacker, hash: commitmentHash(wiredChair, salt) }),
   );
-  next = must(applyAction(next, { type: 'sit', player: defender, chair: sittingChair }, now));
-  next = must(applyAction(next, { type: 'press', player: attacker, chair: wiredChair, salt }, now));
+  next = must(applyAction(next, { type: 'sit', player: defender, chair: sittingChair }));
+  next = must(applyAction(next, { type: 'press', player: attacker, chair: wiredChair, salt }));
   return next;
 }
 
-function advance(state: MatchState, now = NOW): MatchState {
-  return must(applyAction(state, { type: 'advance' }, now));
+function advance(state: MatchState): MatchState {
+  return must(applyAction(state, { type: 'advance' }));
 }
 
 describe('commitments', () => {
@@ -92,12 +79,11 @@ describe('match setup', () => {
     expect(availableChairs(state)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
     expect(state.players[0].points).toBe(0);
     expect(state.players[1].points).toBe(0);
-    expect(state.deadline).toBe(NOW + 30_000);
   });
 
   it('honours a requested starting attacker', () => {
     expect(fresh().attacker).toBe(0);
-    const again = createMatch({ players: PLAYERS, startingAttacker: 1, now: NOW });
+    const again = createMatch({ players: PLAYERS, startingAttacker: 1 });
     expect(again.attacker).toBe(1);
   });
 });
@@ -106,50 +92,47 @@ describe('turn order', () => {
   it('requires set → sit → press, with the correct actor in each phase', () => {
     let state = fresh();
 
-    const sitTooEarly = applyAction(state, { type: 'sit', player: 1, chair: 12 }, NOW);
+    const sitTooEarly = applyAction(state, { type: 'sit', player: 1, chair: 12 });
     expect(sitTooEarly.ok).toBe(false);
     if (!sitTooEarly.ok) expect(sitTooEarly.code).toBe('INVALID_PHASE');
 
-    const defenderSets = applyAction(
-      state,
-      { type: 'set', player: 1, hash: commitmentHash(12, SALT_B) },
-      NOW,
-    );
+    const defenderSets = applyAction(state, {
+      type: 'set',
+      player: 1,
+      hash: commitmentHash(12, SALT_B),
+    });
     expect(defenderSets.ok).toBe(false);
     if (!defenderSets.ok) expect(defenderSets.code).toBe('INVALID_PLAYER');
 
-    state = must(
-      applyAction(state, { type: 'set', player: 0, hash: commitmentHash(12, SALT_A) }, NOW),
-    );
+    state = must(applyAction(state, { type: 'set', player: 0, hash: commitmentHash(12, SALT_A) }));
     expect(state.phase).toBe('sit');
     expect(state.wiredCommitment).not.toBeNull();
     expect(state.sittingChair).toBeNull();
 
-    const attackerSits = applyAction(state, { type: 'sit', player: 0, chair: 1 }, NOW);
+    const attackerSits = applyAction(state, { type: 'sit', player: 0, chair: 1 });
     expect(attackerSits.ok).toBe(false);
     if (!attackerSits.ok) expect(attackerSits.code).toBe('INVALID_PLAYER');
 
-    state = must(applyAction(state, { type: 'sit', player: 1, chair: 12 }, NOW));
+    state = must(applyAction(state, { type: 'sit', player: 1, chair: 12 }));
     expect(state.phase).toBe('press');
     expect(state.sittingChair).toBe(12);
 
-    const defenderPresses = applyAction(
-      state,
-      { type: 'press', player: 1, chair: 12, salt: SALT_B },
-      NOW,
-    );
+    const defenderPresses = applyAction(state, {
+      type: 'press',
+      player: 1,
+      chair: 12,
+      salt: SALT_B,
+    });
     expect(defenderPresses.ok).toBe(false);
     if (!defenderPresses.ok) expect(defenderPresses.code).toBe('INVALID_PLAYER');
 
-    state = must(applyAction(state, { type: 'press', player: 0, chair: 12, salt: SALT_A }, NOW));
+    state = must(applyAction(state, { type: 'press', player: 0, chair: 12, salt: SALT_A }));
     expect(state.phase).toBe('result');
   });
 
   it('does not expose the wired chair before the button press', () => {
     let state = fresh();
-    state = must(
-      applyAction(state, { type: 'set', player: 0, hash: commitmentHash(9, SALT_A) }, NOW),
-    );
+    state = must(applyAction(state, { type: 'set', player: 0, hash: commitmentHash(9, SALT_A) }));
     const afterSet = createView(state, 1);
     expect(afterSet.phase).toBe('sit');
     expect(afterSet.wiredCommitted).toBe(true);
@@ -157,14 +140,14 @@ describe('turn order', () => {
     expect(afterSet.lastResult).toBeNull();
     expect(JSON.stringify(afterSet)).not.toContain('wiredChair');
 
-    state = must(applyAction(state, { type: 'sit', player: 1, chair: 3 }, NOW));
+    state = must(applyAction(state, { type: 'sit', player: 1, chair: 3 }));
     const afterSit = createView(state, 1);
     expect(afterSit.phase).toBe('press');
     expect(afterSit.sittingChair).toBe(3);
     expect(afterSit.lastResult).toBeNull();
     expect(JSON.stringify(afterSit)).not.toContain('wiredChair');
 
-    state = must(applyAction(state, { type: 'press', player: 0, chair: 9, salt: SALT_A }, NOW));
+    state = must(applyAction(state, { type: 'press', player: 0, chair: 9, salt: SALT_A }));
     const afterPress = createView(state, 1);
     expect(afterPress.lastResult).toMatchObject({ wiredChair: 9, sittingChair: 3, hit: false });
   });
@@ -199,7 +182,7 @@ describe('turn resolution', () => {
     expect(state.attacker).toBe(1);
     expect(state.turn).toBe(2);
 
-    state = playTurn(state, 5, 5, NOW, SALT_B);
+    state = playTurn(state, 5, 5, SALT_B);
     expect(state.players[0].points).toBe(0);
     expect(state.players[1].points).toBe(12);
     expect(state.players[1].shocksDealt).toBe(1);
@@ -216,11 +199,11 @@ describe('turn resolution', () => {
   it('removes points that were already earned from the shocked player', () => {
     let state = playTurn(fresh(), 1, 12); // Bob 12
     state = advance(state);
-    state = playTurn(state, 2, 11, NOW, SALT_B); // Alice 11
+    state = playTurn(state, 2, 11, SALT_B); // Alice 11
     state = advance(state);
-    state = playTurn(state, 3, 10, NOW, SALT_A); // Bob 22
+    state = playTurn(state, 3, 10, SALT_A); // Bob 22
     state = advance(state);
-    state = playTurn(state, 2, 2, NOW, SALT_B); // Alice shocked -> 0, Bob 22
+    state = playTurn(state, 2, 2, SALT_B); // Alice shocked -> 0, Bob 22
     expect(state.players[0].points).toBe(0);
     expect(state.players[1].points).toBe(22);
     expect(state.lastResult?.pointsLost).toBe(11);
@@ -231,19 +214,13 @@ describe('turn resolution', () => {
     expect(isChairLegal(state, 12)).toBe(false);
     state = advance(state);
 
-    state = must(
-      applyAction(state, { type: 'set', player: 1, hash: commitmentHash(12, SALT_B) }, NOW),
-    );
-    const rejectedSit = applyAction(state, { type: 'sit', player: 0, chair: 12 }, NOW);
+    state = must(applyAction(state, { type: 'set', player: 1, hash: commitmentHash(12, SALT_B) }));
+    const rejectedSit = applyAction(state, { type: 'sit', player: 0, chair: 12 });
     expect(rejectedSit.ok).toBe(false);
     if (!rejectedSit.ok) expect(rejectedSit.code).toBe('INVALID_CHAIR');
 
-    state = must(applyAction(state, { type: 'sit', player: 0, chair: 1 }, NOW));
-    const rejectedPress = applyAction(
-      state,
-      { type: 'press', player: 1, chair: 12, salt: SALT_B },
-      NOW,
-    );
+    state = must(applyAction(state, { type: 'sit', player: 0, chair: 1 }));
+    const rejectedPress = applyAction(state, { type: 'press', player: 1, chair: 12, salt: SALT_B });
     expect(rejectedPress.ok).toBe(false);
     if (!rejectedPress.ok) expect(rejectedPress.code).toBe('INVALID_CHAIR');
   });
@@ -252,37 +229,36 @@ describe('turn resolution', () => {
 describe('validation', () => {
   it('rejects a press that does not match the commitment', () => {
     let state = fresh();
-    state = must(
-      applyAction(state, { type: 'set', player: 0, hash: commitmentHash(5, SALT_A) }, NOW),
-    );
-    state = must(applyAction(state, { type: 'sit', player: 1, chair: 6 }, NOW));
-    const result = applyAction(state, { type: 'press', player: 0, chair: 6, salt: SALT_A }, NOW);
+    state = must(applyAction(state, { type: 'set', player: 0, hash: commitmentHash(5, SALT_A) }));
+    state = must(applyAction(state, { type: 'sit', player: 1, chair: 6 }));
+    const result = applyAction(state, { type: 'press', player: 0, chair: 6, salt: SALT_A });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe('COMMITMENT_MISMATCH');
   });
 
   it('rejects a malformed commitment and duplicate phases', () => {
-    const malformed = applyAction(fresh(), { type: 'set', player: 0, hash: 'nope' }, NOW);
+    const malformed = applyAction(fresh(), { type: 'set', player: 0, hash: 'nope' });
     expect(malformed.ok).toBe(false);
     if (!malformed.ok) expect(malformed.code).toBe('INVALID_HASH');
 
     let state = must(
-      applyAction(fresh(), { type: 'set', player: 0, hash: commitmentHash(5, SALT_A) }, NOW),
+      applyAction(fresh(), { type: 'set', player: 0, hash: commitmentHash(5, SALT_A) }),
     );
-    const wrongPhase = applyAction(
-      state,
-      { type: 'set', player: 0, hash: commitmentHash(6, SALT_A) },
-      NOW,
-    );
+    const wrongPhase = applyAction(state, {
+      type: 'set',
+      player: 0,
+      hash: commitmentHash(6, SALT_A),
+    });
     expect(wrongPhase.ok).toBe(false);
     if (!wrongPhase.ok) expect(wrongPhase.code).toBe('INVALID_PHASE');
 
-    state = must(applyAction(state, { type: 'sit', player: 1, chair: 6 }, NOW));
-    const pressWithBadSalt = applyAction(
-      state,
-      { type: 'press', player: 0, chair: 5, salt: SALT_B },
-      NOW,
-    );
+    state = must(applyAction(state, { type: 'sit', player: 1, chair: 6 }));
+    const pressWithBadSalt = applyAction(state, {
+      type: 'press',
+      player: 0,
+      chair: 5,
+      salt: SALT_B,
+    });
     expect(pressWithBadSalt.ok).toBe(false);
     if (!pressWithBadSalt.ok) expect(pressWithBadSalt.code).toBe('COMMITMENT_MISMATCH');
   });
@@ -309,7 +285,7 @@ describe('victory conditions', () => {
     ];
     for (let i = 0; i < turns.length; i += 1) {
       const [wired, sitting] = turns[i]!;
-      state = playTurn(state, wired, sitting, NOW, `salt-${i}`);
+      state = playTurn(state, wired, sitting, `salt-${i}`);
       if (state.outcome) break;
       state = advance(state);
     }
@@ -325,7 +301,7 @@ describe('victory conditions', () => {
   it('wins after shocking the opponent three times', () => {
     let state = fresh();
     for (let turn = 1; turn <= 5; turn += 1) {
-      state = playTurn(state, 5, 5, NOW, `salt-${turn}`);
+      state = playTurn(state, 5, 5, `salt-${turn}`);
       if (state.outcome) break;
       state = advance(state);
     }
@@ -339,7 +315,7 @@ describe('victory conditions', () => {
     state = playTurn(state, 1, 12);
     expect(state.outcome).toBeNull();
     state = advance(state);
-    state = playTurn(state, 1, 11, NOW, SALT_B);
+    state = playTurn(state, 1, 11, SALT_B);
     expect(state.outcome).toEqual({ kind: 'win', winner: 1, reason: 'turn-limit' });
   });
 
@@ -347,53 +323,31 @@ describe('victory conditions', () => {
     let state = fresh({ maxTurns: 2 });
     state = playTurn(state, 5, 5);
     state = advance(state);
-    state = playTurn(state, 6, 6, NOW, SALT_B);
+    state = playTurn(state, 6, 6, SALT_B);
     expect(state.players[0].points).toBe(0);
     expect(state.players[1].points).toBe(0);
     expect(state.outcome).toEqual({ kind: 'draw', winner: null, reason: 'draw' });
   });
 });
 
-describe('timeouts and forfeits', () => {
-  it('forfeits an attacker who misses the set deadline', () => {
-    const state = must(applyAction(fresh(), { type: 'timeout' }, NOW + 30_000));
-    expect(state.phase).toBe('finished');
-    expect(state.outcome).toEqual({ kind: 'win', winner: 1, reason: 'forfeit' });
-  });
-
-  it('forfeits a defender who misses the sit deadline', () => {
-    let state = fresh();
-    state = must(
-      applyAction(state, { type: 'set', player: 0, hash: commitmentHash(5, SALT_A) }, NOW),
-    );
-    state = must(applyAction(state, { type: 'timeout' }, NOW + 60_000));
-    expect(state.outcome).toEqual({ kind: 'win', winner: 0, reason: 'forfeit' });
-  });
-
-  it('forfeits an attacker who does not press the button', () => {
-    let state = fresh();
-    state = must(
-      applyAction(state, { type: 'set', player: 0, hash: commitmentHash(5, SALT_A) }, NOW),
-    );
-    state = must(applyAction(state, { type: 'sit', player: 1, chair: 6 }, NOW));
-    state = must(applyAction(state, { type: 'timeout' }, NOW + 90_000));
-    expect(state.outcome).toEqual({ kind: 'win', winner: 1, reason: 'forfeit' });
-  });
-
+describe('forfeits', () => {
   it('allows a player to forfeit explicitly', () => {
-    const state = must(applyAction(fresh(), { type: 'forfeit', player: 0 }, NOW));
+    const state = must(applyAction(fresh(), { type: 'forfeit', player: 0 }));
     expect(state.phase).toBe('finished');
     expect(state.outcome).toEqual({ kind: 'win', winner: 1, reason: 'forfeit' });
   });
 
-  it('advances automatically from the result phase on timeout', () => {
-    let state = playTurn(fresh(), 1, 12);
-    state = must(applyAction(state, { type: 'timeout' }, NOW + 10_000));
-    expect(state.phase).toBe('set');
-    expect(state.turn).toBe(2);
-    expect(state.attacker).toBe(1);
-    expect(state.wiredCommitment).toBeNull();
-    expect(state.sittingChair).toBeNull();
+  it('waits for the result advance instead of advancing automatically', () => {
+    const state = playTurn(fresh(), 1, 12);
+    expect(state.phase).toBe('result');
+    expect(state.turn).toBe(1);
+
+    const next = advance(state);
+    expect(next.phase).toBe('set');
+    expect(next.turn).toBe(2);
+    expect(next.attacker).toBe(1);
+    expect(next.wiredCommitment).toBeNull();
+    expect(next.sittingChair).toBeNull();
   });
 });
 
@@ -419,7 +373,7 @@ describe('full sequence', () => {
       const rows = availableChairs(state);
       const wired = rows[(turn * 3 + 1) % rows.length]!;
       const sitting = rows[(turn * 5 + 2) % rows.length]!;
-      state = playTurn(state, wired, sitting, NOW, `seq-${turn}`);
+      state = playTurn(state, wired, sitting, `seq-${turn}`);
       const retired = state.retiredChairs;
       expect(new Set(retired).size).toBe(retired.length);
       if (!state.outcome) state = advance(state);

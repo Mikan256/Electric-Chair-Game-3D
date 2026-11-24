@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-24T11:24:24.285Z",
+  "generatedAt": "2026-11-24T14:37:09.642Z",
   "assets": {
     "models/chair-01.data": {
       "source": "Electric-Chair-Game/Assets/Object/Chair/Block1.fbx",
@@ -218,18 +218,23 @@
     },
     "video/final-thunder.mp4": {
       "source": "Electric-Chair-Game/Assets/Image/FINAL THUNDER.mp4",
-      "bytes": 12053438,
-      "sha256": "6d8b8785d5a4913d4ee5ee34300227f5fb7257dfa0a472b9f2334dd4f9b2901d"
+      "bytes": 642067,
+      "sha256": "d908a92d4e3e3203f890972ee886d73de1cb0491768155b8324c342ac4e9dbe1"
     },
     "video/lightning.mp4": {
       "source": "Electric-Chair-Game/Assets/Image/nc419728_電光が走る.mp4",
-      "bytes": 3181509,
-      "sha256": "dac7c61ba9ffb75d521b60deb06a6333bef47af8e1992abe8a2702053f0d919c"
+      "bytes": 493212,
+      "sha256": "b5aca08e295ec4e94e924be19f384da0c2aa02b89ce8ad44561e4857658d9fc5"
     },
     "audio/bgm/title.mp3": {
       "source": "Electric-Chair-Game/Assets/BGM/MusMus-BGM-168.mp3",
-      "bytes": 10131376,
-      "sha256": "bf73512e2edf6eb84ff36ffa5c3d3ff1bab4ae89aff2b42a0ede3da742cf3d17"
+      "bytes": 4050994,
+      "sha256": "11ab801f8b5e4be4d99d7d7fa0cb71c76d230f241adf0e2a708ae0645a64aa17"
+    },
+    "audio/bgm/innovation.mp3": {
+      "source": "Electric-Chair-Game/Assets/BGM/Innovation.wav",
+      "bytes": 4803500,
+      "sha256": "71b7ca8454c8ae469871b2902c573978ddd62fa14b0b1e85d93b6cbe3cf90a72"
     },
     "audio/bgm/heartbeat.mp3": {
       "source": "Electric-Chair-Game/Assets/BGM/Heartbeat03-1(Slow-Reverb).mp3",
@@ -250,6 +255,54 @@
       "source": "Electric-Chair-Game/Assets/BGM/決定ボタンを押す15.mp3",
       "bytes": 20688,
       "sha256": "d112ac3a8bf43e6367f2e76fde7f79be2eac1a050228528b819ffe61e52d5323"
+    },
+    "audio/voice/round-1.mp3": {
+      "source": "Piper TTS \"Round 1\" (en_US-joe-medium, CC0)",
+      "generated": true,
+      "bytes": 17911,
+      "sha256": "0c7379c993ab96332b983e82ca38648d3cbb58253a0d876e302c4f7ae4b1877d"
+    },
+    "audio/voice/round-2.mp3": {
+      "source": "Piper TTS \"Round 2\" (en_US-joe-medium, CC0)",
+      "generated": true,
+      "bytes": 16344,
+      "sha256": "9c839f5bbd4ae754ae045c5d73f3bee650418f445d3ee850243fe3fc2be676b9"
+    },
+    "audio/voice/round-3.mp3": {
+      "source": "Piper TTS \"Round 3\" (en_US-joe-medium, CC0)",
+      "generated": true,
+      "bytes": 18538,
+      "sha256": "4dcb850cf183035ed3b0ae522fcdf622c1f161747b2bb77d253efe637aaf1377"
+    },
+    "audio/voice/round-4.mp3": {
+      "source": "Piper TTS \"Round 4\" (en_US-joe-medium, CC0)",
+      "generated": true,
+      "bytes": 19479,
+      "sha256": "b05b5bcedae21ebd3aab970aedcdd561b3bc985cd39f7d23702aac1f081e89e1"
+    },
+    "audio/voice/round-5.mp3": {
+      "source": "Piper TTS \"Round 5\" (en_US-joe-medium, CC0)",
+      "generated": true,
+      "bytes": 18852,
+      "sha256": "8246529a4bd2e46bafadee72a70b96c1e705d8b614fb41e17837d737aefb0933"
+    },
+    "audio/voice/round-6.mp3": {
+      "source": "Piper TTS \"Round 6\" (en_US-joe-medium, CC0)",
+      "generated": true,
+      "bytes": 19479,
+      "sha256": "677c32e943d83593ce8da42d95d3d4ccb5717807d9bd9df99fb30f278b128599"
+    },
+    "audio/voice/round-7.mp3": {
+      "source": "Piper TTS \"Round 7\" (en_US-joe-medium, CC0)",
+      "generated": true,
+      "bytes": 19165,
+      "sha256": "be4bfbc7802c06be9d525f275d2d2d43dee685f0e453d1ff07eb580d0a982b67"
+    },
+    "audio/voice/round-8.mp3": {
+      "source": "Piper TTS \"Round 8\" (en_US-joe-medium, CC0)",
+      "generated": true,
+      "bytes": 17911,
+      "sha256": "fe06ace15ce8fa9456b247d6edfdbc0957c4984da45bf39b7e8002d121f20b33"
     }
   }
 }

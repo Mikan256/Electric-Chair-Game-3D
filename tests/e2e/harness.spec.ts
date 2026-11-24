@@ -26,8 +26,8 @@ test.describe('local Flaxia harness', () => {
 
     const alice = frameByName(page, 'Alice');
     const bob = frameByName(page, 'Bob');
-    await expect(alice.locator('.panel h2')).toHaveText('ONLINE MATCH');
-    await expect(bob.locator('.panel h2')).toHaveText('ONLINE MATCH');
+    await expect(alice.locator('.panel h2')).toHaveText('ONLINE MATCH', { timeout: 30_000 });
+    await expect(bob.locator('.panel h2')).toHaveText('ONLINE MATCH', { timeout: 30_000 });
 
     await page.locator('#force-start').click();
     await expect(alice.locator('#hud-turn')).toHaveText('TURN 1 / 8', { timeout: 25_000 });

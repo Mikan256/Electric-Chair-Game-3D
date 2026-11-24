@@ -21,6 +21,26 @@ export interface ChairActorOptions {
 }
 
 let shadowTexture: THREE.CanvasTexture | null = null;
+let glowTexture: THREE.CanvasTexture | null = null;
+
+function getGlowTexture(): THREE.CanvasTexture {
+  if (glowTexture) return glowTexture;
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const context = canvas.getContext('2d');
+  if (context) {
+    const gradient = context.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.7)');
+    gradient.addColorStop(0.35, 'rgba(255, 255, 255, 0.32)');
+    gradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.08)');
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 128, 128);
+  }
+  glowTexture = new THREE.CanvasTexture(canvas);
+  return glowTexture;
+}
 
 function getShadowTexture(): THREE.CanvasTexture {
   if (shadowTexture) return shadowTexture;
@@ -58,6 +78,7 @@ export class ChairActor {
   private readonly seatMaterial: THREE.MeshStandardMaterial;
   private readonly baseY = 0;
   private state: ChairVisualState = 'available';
+  private retired = false;
   private hoverAmount = 0;
   private selectedPulse = 0;
   private shakeTime = 0;
@@ -114,6 +135,7 @@ export class ChairActor {
 
     this.glow = new THREE.Sprite(
       new THREE.SpriteMaterial({
+        map: getGlowTexture(),
         color: 0xffe3a3,
         transparent: true,
         opacity: 0,
@@ -121,7 +143,7 @@ export class ChairActor {
         depthWrite: false,
       }),
     );
-    this.glow.scale.set(3.4, 3.4, 1);
+    this.glow.scale.set(2.6, 2.6, 1);
     this.glow.position.set(0, 0.7, 0);
     this.group.add(this.glow);
 
@@ -135,8 +157,38 @@ export class ChairActor {
   }
 
   setState(state: ChairVisualState): void {
-    if (this.state === state) return;
+    // 得点して退場した椅子は、結果演出などで状態を上書きされても戻さない。
+    if (state === 'retired') {
+      if (this.retired) return;
+      this.retired = true;
+      this.state = 'retired';
+      this.applyVisualState('retired');
+      return;
+    }
+    if (this.retired || this.state === state) return;
     this.state = state;
+    this.applyVisualState(state);
+  }
+
+  /** 得点椅子をシーンから見えなくする。reset() で再び表示される。 */
+  setRetired(retired: boolean): void {
+    if (retired) {
+      this.setState('retired');
+      return;
+    }
+    if (!this.retired) return;
+    this.reset();
+  }
+
+  getState(): ChairVisualState {
+    return this.state;
+  }
+
+  isRetired(): boolean {
+    return this.retired;
+  }
+
+  private applyVisualState(state: ChairVisualState): void {
     switch (state) {
       case 'available':
         this.ring.material.color.setHex(0xd8c9a4);
@@ -147,13 +199,13 @@ export class ChairActor {
         this.ring.material.color.setHex(0xffe3a3);
         this.ring.material.opacity = 0.95;
         this.glow.material.color.setHex(0xffe3a3);
-        this.glow.material.opacity = 0.3;
+        this.glow.material.opacity = 0.18;
         break;
       case 'selected':
         this.ring.material.color.setHex(0x3dff9c);
         this.ring.material.opacity = 1;
         this.glow.material.color.setHex(0x3dff9c);
-        this.glow.material.opacity = 0.42;
+        this.glow.material.opacity = 0.24;
         this.selectedPulse = 1;
         break;
       case 'unavailable':
@@ -170,26 +222,30 @@ export class ChairActor {
         this.ring.material.color.setHex(0xff2442);
         this.ring.material.opacity = 1;
         this.glow.material.color.setHex(0xff2442);
-        this.glow.material.opacity = 0.55;
+        this.glow.material.opacity = 0.3;
         break;
       case 'shocked':
         this.ring.material.color.setHex(0xb8f4ff);
         this.ring.material.opacity = 1;
         this.glow.material.color.setHex(0x9fe8ff);
-        this.glow.material.opacity = 0.85;
+        this.glow.material.opacity = 0.42;
         this.shakeTime = 1;
         break;
       case 'avoided':
         this.ring.material.color.setHex(0x3dff9c);
         this.ring.material.opacity = 1;
         this.glow.material.color.setHex(0x3dff9c);
-        this.glow.material.opacity = 0.55;
+        this.glow.material.opacity = 0.3;
         break;
     }
-  }
 
-  getState(): ChairVisualState {
-    return this.state;
+    const visible = state !== 'retired';
+    this.group.visible = visible;
+    this.hitbox.visible = visible;
+    if (!visible) {
+      this.hoverAmount = 0;
+      this.model.scale.setScalar(1);
+    }
   }
 
   update(dt: number, elapsed: number): void {
@@ -204,7 +260,9 @@ export class ChairActor {
     );
     if (this.selectedPulse > 0) this.selectedPulse = Math.max(0, this.selectedPulse - dt * 1.5);
 
-    const targetY = this.state === 'retired' ? -0.5 : 0;
+    // 退場した椅子は完全に床下へ沈める。group.visible も false になるため
+    // 通常は描画されないが、状態が戻ったときに残像が見えないようにする。
+    const targetY = this.state === 'retired' ? -1.6 : 0;
     this.group.position.y += (targetY - this.group.position.y) * Math.min(1, dt * 4);
 
     if (this.shakeTime > 0) {
@@ -224,7 +282,12 @@ export class ChairActor {
   }
 
   reset(): void {
-    this.setState('available');
+    this.retired = false;
+    this.state = 'available';
+    this.applyVisualState('available');
+    this.selectedPulse = 0;
+    this.shakeTime = 0;
+    this.hoverAmount = 0;
     this.model.scale.setScalar(1);
     this.model.position.set(0, 0, 0);
     this.model.rotation.z = 0;

@@ -60,7 +60,9 @@ pnpm release:flaxia
 | `video/final-thunder.mp4` | `Image/FINAL THUNDER.mp4` | 3 回目の感電カットイン |
 | `video/lightning.mp4` | `Image/nc419728_電光が走る.mp4` | 通常感電のカットイン |
 | `audio/bgm/title.mp3` | `BGM/MusMus-BGM-168.mp3` | タイトル BGM |
+| `audio/bgm/innovation.mp3` | `BGM/Innovation.wav` | 対戦中の BGM（MP3 に圧縮） |
 | `audio/bgm/heartbeat.mp3` | `BGM/Heartbeat03-1(...).mp3` | ボタンを押す前の緊張音 |
+| `audio/voice/round-N.mp3` | Piper TTS で生成 | ラウンドコール（1〜8） |
 | `audio/se/electric.mp3` | 効果音ラボ | 感電 |
 | `audio/se/chair.mp3` | `Onoma-Syakiin...` | 着席 |
 | `audio/se/click.mp3` | 決定ボタン | UI |
