@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { chairModelUrl, assetUrl, ASSETS } from '@/assets/registry';
 
 export interface LoadProgress {
@@ -10,7 +11,13 @@ export interface LoadProgress {
 
 type ProgressCallback = (progress: LoadProgress) => void;
 
-/** Loads and caches shared scene assets. Failures fall back to placeholders. */
+/**
+ * Loads and caches shared scene assets.
+ *
+ * The show's chairs are white cubes with a raised seat and a black number on
+ * the outside face. The legacy FBX files give us the cube shape; the seat and
+ * the number plate are added in code.
+ */
 export class AssetLibrary {
   private readonly fbx = new FBXLoader();
   private readonly textureLoader = new THREE.TextureLoader();
@@ -22,16 +29,15 @@ export class AssetLibrary {
   private total = 1;
 
   readonly chairFrameMaterial = new THREE.MeshStandardMaterial({
-    color: 0x17171d,
-    metalness: 0.85,
-    roughness: 0.36,
+    color: 0xf2f1ec,
+    metalness: 0.02,
+    roughness: 0.52,
   });
 
-  readonly cushionMaterial = new THREE.MeshStandardMaterial({
-    color: 0x5a0710,
-    metalness: 0.15,
-    roughness: 0.72,
-    emissive: 0x220004,
+  readonly seatMaterial = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    metalness: 0.0,
+    roughness: 0.4,
   });
 
   setProgressCallback(callback: ProgressCallback | null): void {
@@ -77,12 +83,12 @@ export class AssetLibrary {
         chairModelUrl(chair),
         (object) => {
           this.report(`椅子 ${chair} を読み込み中`);
-          resolve(prepareChairModel(object, this.chairFrameMaterial, this.cushionMaterial));
+          resolve(prepareChairModel(object, chair, this.chairFrameMaterial, this.seatMaterial));
         },
         undefined,
         () => {
           this.report(`椅子 ${chair} の代替モデル`);
-          resolve(createFallbackChair(chair, this.chairFrameMaterial, this.cushionMaterial));
+          resolve(createFallbackChair(chair, this.chairFrameMaterial, this.seatMaterial));
         },
       );
     });
@@ -120,7 +126,6 @@ export class AssetLibrary {
     return this.pedestalPromise;
   }
 
-  /** Preload the models that the stage needs before the first frame. */
   async loadStage(onProgress?: ProgressCallback): Promise<void> {
     this.setProgressCallback(onProgress ?? null);
     await Promise.all(Array.from({ length: 12 }, (_, index) => this.loadChair(index + 1)));
@@ -167,84 +172,119 @@ function stripSceneHelpers(object: THREE.Object3D): void {
 
 function prepareChairModel(
   object: THREE.Group,
+  chair: number,
   frameMaterial: THREE.Material,
-  cushionMaterial: THREE.Material,
+  seatMaterial: THREE.Material,
 ): THREE.Group {
   stripSceneHelpers(object);
   const wrapper = stripAndCenter(object, 0.92);
+
+  let meshCount = 0;
   object.traverse((child) => {
     if (!(child instanceof THREE.Mesh)) return;
+    meshCount += 1;
     child.castShadow = false;
     child.receiveShadow = false;
     child.material = frameMaterial;
     child.frustumCulled = true;
   });
 
-  // 元モデルはブロック状の座面。背もたれ・肘掛けを足して椅子にする。
-  const cushion = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.12, 0.86), cushionMaterial);
-  cushion.position.y = 0.98;
-  cushion.position.z = 0.02;
-  wrapper.add(cushion);
+  const box = new THREE.Box3().setFromObject(wrapper);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
 
-  const back = new THREE.Mesh(new THREE.BoxGeometry(1.16, 1.12, 0.14), frameMaterial);
-  back.position.set(0, 1.5, -0.49);
-  back.rotation.x = -0.1;
-  wrapper.add(back);
+  // 座面の凸。元のブロックの上面に白いクッションを載せる。
+  const seatHeight = 0.16;
+  const seat = new THREE.Mesh(
+    new RoundedBoxGeometry(
+      Math.max(0.55, size.x * 0.62),
+      seatHeight,
+      Math.max(0.5, size.z * 0.56),
+      3,
+      0.05,
+    ),
+    seatMaterial,
+  );
+  seat.position.set(center.x, size.y + seatHeight / 2 - 0.01, center.z);
+  seat.userData.isSeat = true;
+  wrapper.add(seat);
 
-  const backPad = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.9, 0.06), cushionMaterial);
-  backPad.position.set(0, 1.5, -0.4);
-  backPad.rotation.x = -0.1;
-  wrapper.add(backPad);
+  // 外側の面に黒い数字。椅子は中心を向くので、ローカル -Z が外側。
+  const plate = new THREE.Mesh(
+    new THREE.PlaneGeometry(Math.max(0.45, size.x * 0.62), Math.max(0.4, size.y * 0.52)),
+    new THREE.MeshBasicMaterial({
+      map: createChairNumberTexture(chair),
+      transparent: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      toneMapped: false,
+    }),
+  );
+  plate.position.set(center.x, size.y * 0.52, box.min.z - 0.006);
+  plate.rotation.y = Math.PI;
+  plate.userData.isNumberPlate = true;
+  wrapper.add(plate);
 
-  for (const x of [-0.62, 0.62] as const) {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.9), frameMaterial);
-    arm.position.set(x, 1.12, -0.02);
-    wrapper.add(arm);
-    const armPost = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.28, 0.08), frameMaterial);
-    armPost.position.set(x, 0.99, 0.36);
-    wrapper.add(armPost);
+  if (meshCount === 0) {
+    const fallback = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), frameMaterial);
+    fallback.position.y = size.y / 2;
+    wrapper.add(fallback);
   }
 
-  const trim = new THREE.Mesh(
-    new THREE.TorusGeometry(0.76, 0.025, 8, 36),
-    new THREE.MeshBasicMaterial({ color: 0xd21f35 }),
-  );
-  trim.rotation.x = Math.PI / 2;
-  trim.position.y = 0.04;
-  wrapper.add(trim);
-
   return wrapper;
+}
+
+function createChairNumberTexture(chair: number): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const context = canvas.getContext('2d');
+  if (!context) return new THREE.CanvasTexture(canvas);
+
+  context.clearRect(0, 0, 512, 512);
+  context.fillStyle = '#151515';
+  context.font = '900 300px "Zekton", "Arial Black", "Hiragino Kaku Gothic ProN", sans-serif';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(String(chair), 256, 272);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return texture;
 }
 
 function createFallbackChair(
   chair: number,
   frameMaterial: THREE.Material,
-  cushionMaterial: THREE.Material,
+  seatMaterial: THREE.Material,
 ): THREE.Group {
   const group = new THREE.Group();
-  const seat = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.16, 1.1), frameMaterial);
-  seat.position.y = 1.0;
+  const base = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.92, 1.2), frameMaterial);
+  base.position.y = 0.46;
+  group.add(base);
+
+  const seat = new THREE.Mesh(new RoundedBoxGeometry(0.78, 0.16, 0.7, 3, 0.05), seatMaterial);
+  seat.position.y = 0.99;
+  seat.userData.isSeat = true;
   group.add(seat);
 
-  const cushion = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.12, 1.0), cushionMaterial);
-  cushion.position.y = 1.12;
-  group.add(cushion);
+  const plate = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.75, 0.48),
+    new THREE.MeshBasicMaterial({
+      map: createChairNumberTexture(chair),
+      transparent: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      toneMapped: false,
+    }),
+  );
+  plate.position.set(0, 0.48, -0.606);
+  plate.rotation.y = Math.PI;
+  plate.userData.isNumberPlate = true;
+  group.add(plate);
 
-  const back = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.3, 0.12), frameMaterial);
-  back.position.set(0, 1.7, -0.5);
-  group.add(back);
-
-  for (const [x, z] of [
-    [-0.5, -0.42],
-    [0.5, -0.42],
-    [-0.5, 0.42],
-    [0.5, 0.42],
-  ] as const) {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.0, 0.1), frameMaterial);
-    leg.position.set(x, 0.5, z);
-    group.add(leg);
-  }
-
-  group.userData.fallbackChair = chair;
   return group;
 }

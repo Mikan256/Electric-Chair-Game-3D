@@ -25,7 +25,10 @@
     "assets:sync": "node scripts/sync-assets.mjs",
     "assets:optimize": "python3 scripts/optimize-assets.py",
     "simulate": "tsx scripts/simulate.ts",
-    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build"
+    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
+    "assets:compress": "bash scripts/compress-media.sh",
+    "validate:zip": "python3 scripts/validate-flaxia-zip.py",
+    "release:flaxia": "node scripts/package-flaxia.mjs"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

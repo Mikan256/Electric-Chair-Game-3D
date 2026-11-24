@@ -87,7 +87,8 @@ describe('commitments', () => {
     expect(commitmentHash(7, salt)).toBe(hash);
     expect(commitmentHash(8, salt)).not.toBe(hash);
     expect(verifyCommitment(hash, 7, salt)).toBe(true);
-    expect(verifyCommitment(hash, 7, `${salt.slice(0, -1)}0`)).toBe(false);
+    const otherSalt = `${salt[0] === '0' ? '1' : '0'}${salt.slice(1)}`;
+    expect(verifyCommitment(hash, 7, otherSalt)).toBe(false);
   });
 });
 

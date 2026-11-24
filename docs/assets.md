@@ -8,26 +8,52 @@ Web ビルドに必要なファイルだけを `public/assets/` にコピーし�
 - Unity 側は **編集しない**（親リポジトリの `.gitignore` 対象）
 - `public/assets/` はコミット対象（デプロイを再現可能にするため）
 - ファイル名は ASCII の論理名に変換する
-- 来歴は `public/assets/CREDITS.md`、サイズ・ハッシュは `public/assets/manifest.json`
+- 来歴は `public/assets/CREDITS.txt`、サイズ・ハッシュは `public/assets/manifest.json`
 
-## 同期
+## 同期と圧縮
 
 ```bash
 pnpm assets:sync        # コピー + Pillow があれば縮小
 pnpm assets:optimize    # 画像だけ再圧縮
+pnpm assets:compress    # BGM / 動画を再エンコード（要 ffmpeg）
 ```
 
 `sync-assets.mjs` の `files` マップに論理パス → Unity パスを追加します。
 コピー後に `scripts/optimize-assets.py` が大きすぎる画像を縮小します
 （時計画像は元 8192²）。Pillow が無い環境では縮小だけスキップされます。
+`assets:sync` は元の動画・BGM をコピーし直すため、その後に
+`assets:compress` を実行してください。
+
+### Flaxia の拡張子制限
+
+WVFS は `.fbx` / `.vrm` / `.md` を **拒否** します。拒否された ZIP は
+ゲーム URL が 404（Not Found）になるため、次のように保存しています。
+
+| 素材 | 保存拡張子 | 読み込み |
+|---|---|---|
+| FBX (椅子/台座) | `.data` | `FBXLoader`（内容で判定） |
+| VRM | `.data` | `GLTFLoader`（内容で判定） |
+| クレジット | `.txt` | ゲームからは未使用 |
+
+## Flaxia 用 ZIP
+
+```bash
+pnpm release:flaxia
+```
+
+- 軽量版: `release/electric-chair-game-3d-flaxia.zip`（約 5.6MB）
+- 完全版: `release/electric-chair-game-3d-flaxia-full.zip`（約 17.2MB、VRM 含む）
+- `index.html` は ZIP ルート
+- 事前に `validate-flaxia-zip.py` が拡張子・サイズ・パスを検証
+- Flaxia の `validateZipStructure` 相当のチェックを通しています
 
 ## 主なアセット
 
 | 論理パス | 元 | 用途 |
 |---|---|---|
-| `models/chair-01..12.fbx` | `Object/Chair/Block*.fbx` | 椅子の座面。背もたれ・肘掛けは three.js で追加 |
-| `models/pedestal.fbx` | `Object/その他/台座.fbx` | 旧中央台座（現在は手続き型コンソールを使用） |
-| `models/avatar.vrm` | `Object/その他/電気椅子ゲーム.vrm` | VRoid アバター（`?avatar=1` で遅延ロード） |
+| `models/chair-01..12.data` | `Object/Chair/Block*.fbx` | 白い立方体椅子のベース。座面の凸と外側の黒数字は three.js で追加 |
+| `models/pedestal.data` | `Object/その他/台座.fbx` | 旧中央台座（現在は手続き型の前方ペデスタルを使用） |
+| `models/avatar.data` | `Object/その他/電気椅子ゲーム.vrm` | VRoid アバター（`?avatar=1` で遅延ロード） |
 | `textures/clock.png` | `Image/時計.png` | ステージ床の時計 |
 | `textures/logo.png` | `Image/電気椅子ゲーム.png` | タイトルロゴ |
 | `textures/lightning/*` | LightningBolt / FX_Kandol_Pack | 雷エフェクト |
@@ -42,7 +68,7 @@ pnpm assets:optimize    # 画像だけ再圧縮
 ## ライセンス / クレジット
 
 各素材のライセンスは元の Unity プロジェクトの `LICENSE` と Asset Store の
-ライセンスに従います。`public/assets/CREDITS.md` を確認してください。
+ライセンスに従います。`public/assets/CREDITS.txt` を確認してください。
 
 - BGM: MusMus
 - 効果音: 効果音ラボ、Onoma

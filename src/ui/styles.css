@@ -999,3 +999,167 @@ body,
     bottom: 6px;
   }
 }
+
+/* Flaxia's in-post player is 600×400. Keep the title and HUD usable there. */
+@media (max-height: 520px) {
+  .screen {
+    justify-content: flex-start;
+    padding: 8px 12px;
+  }
+
+  .title-screen .logo {
+    width: min(390px, 62vw);
+    margin-top: 2px;
+  }
+
+  .title-screen .title-copy {
+    margin: 6px 0 10px;
+    font-size: 9px;
+    letter-spacing: 0.16em;
+  }
+
+  .title-screen > .title-copy:last-child {
+    display: none;
+  }
+
+  .title-screen .menu {
+    width: min(350px, 76vw);
+    padding: 8px;
+    gap: 6px;
+  }
+
+  .title-screen .menu .btn {
+    min-height: 37px;
+    padding: 7px 14px;
+    font-size: 13px;
+  }
+
+  .title-screen > .row {
+    margin-top: 10px !important;
+  }
+
+  .hud-top {
+    top: 6px;
+    padding: 4px 14px;
+    gap: 12px;
+  }
+
+  .hud-top .phase {
+    font-size: 10px;
+  }
+
+  .hud-top .timer {
+    font-size: 15px;
+  }
+
+  .player-card {
+    top: 48px;
+    width: 25vw;
+    padding: 5px 8px;
+  }
+
+  .player-card .role {
+    font-size: 8px;
+    letter-spacing: 0.12em;
+  }
+
+  .player-card .name {
+    margin: 1px 0 2px;
+    font-size: 11px;
+  }
+
+  .player-card .points {
+    font-size: 21px;
+  }
+
+  .player-card .points small {
+    font-size: 9px;
+  }
+
+  .player-card .shocks {
+    margin-top: 3px;
+    gap: 3px;
+  }
+
+  .shock-pip {
+    width: 12px;
+    height: 4px;
+  }
+
+  .hint {
+    display: none;
+  }
+
+  .bottom-panel {
+    bottom: 4px;
+    padding: 4px 6px 6px;
+  }
+
+  .chair-grid {
+    grid-template-columns: repeat(12, 1fr);
+    gap: 4px;
+  }
+
+  .chair-btn {
+    aspect-ratio: auto;
+    min-height: 30px;
+    font-size: 12px;
+  }
+
+  .actions {
+    margin-top: 4px;
+    gap: 6px;
+  }
+
+  .actions .btn {
+    min-height: 28px;
+    padding: 4px 12px;
+    font-size: 11px;
+  }
+
+  .actions .status {
+    min-width: 0;
+    flex: 1;
+    text-align: left;
+    font-size: 10px;
+  }
+
+  .result-title {
+    font-size: clamp(34px, 12vh, 64px);
+  }
+
+  .result-sub {
+    font-size: 13px;
+  }
+
+  .result-detail {
+    font-size: 11px;
+  }
+
+  .winner-title {
+    font-size: clamp(26px, 9vh, 46px);
+  }
+
+  .winner-name {
+    font-size: 18px;
+  }
+
+  .score-row {
+    gap: 12px;
+    margin: 2px 0 8px;
+  }
+
+  .score-box {
+    min-width: 96px;
+    padding: 6px 10px;
+  }
+
+  .score-box .value {
+    font-size: 26px;
+  }
+
+  .chat-panel {
+    max-height: 45vh;
+    bottom: 48px;
+  }
+}

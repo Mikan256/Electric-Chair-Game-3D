@@ -19,20 +19,20 @@ const targetRoot = join(root, 'public', 'assets');
 /** logical key -> legacy Unity path (relative to Assets/) */
 const files = {
   // 3D assets
-  'models/chair-01.fbx': 'Object/Chair/Block1.fbx',
-  'models/chair-02.fbx': 'Object/Chair/Block2.fbx',
-  'models/chair-03.fbx': 'Object/Chair/Block3.fbx',
-  'models/chair-04.fbx': 'Object/Chair/Block4.fbx',
-  'models/chair-05.fbx': 'Object/Chair/Block5.fbx',
-  'models/chair-06.fbx': 'Object/Chair/Block6.fbx',
-  'models/chair-07.fbx': 'Object/Chair/Block7.fbx',
-  'models/chair-08.fbx': 'Object/Chair/Block8.fbx',
-  'models/chair-09.fbx': 'Object/Chair/Block9.fbx',
-  'models/chair-10.fbx': 'Object/Chair/Block10.fbx',
-  'models/chair-11.fbx': 'Object/Chair/Block11.fbx',
-  'models/chair-12.fbx': 'Object/Chair/Block12.fbx',
-  'models/pedestal.fbx': 'Object/その他/台座.fbx',
-  'models/avatar.vrm': 'Object/その他/電気椅子ゲーム.vrm',
+  'models/chair-01.data': 'Object/Chair/Block1.fbx',
+  'models/chair-02.data': 'Object/Chair/Block2.fbx',
+  'models/chair-03.data': 'Object/Chair/Block3.fbx',
+  'models/chair-04.data': 'Object/Chair/Block4.fbx',
+  'models/chair-05.data': 'Object/Chair/Block5.fbx',
+  'models/chair-06.data': 'Object/Chair/Block6.fbx',
+  'models/chair-07.data': 'Object/Chair/Block7.fbx',
+  'models/chair-08.data': 'Object/Chair/Block8.fbx',
+  'models/chair-09.data': 'Object/Chair/Block9.fbx',
+  'models/chair-10.data': 'Object/Chair/Block10.fbx',
+  'models/chair-11.data': 'Object/Chair/Block11.fbx',
+  'models/chair-12.data': 'Object/Chair/Block12.fbx',
+  'models/pedestal.data': 'Object/その他/台座.fbx',
+  'models/avatar.data': 'Object/その他/電気椅子ゲーム.vrm',
 
   // Branding / 2D art
   'textures/logo.png': 'Image/電気椅子ゲーム.png',
@@ -86,7 +86,7 @@ const files = {
   'audio/se/click.mp3': 'BGM/決定ボタンを押す15.mp3',
 };
 
-// `Innovation.wav` (55 MB) is intentionally not shipped; see CREDITS.md.
+// `Innovation.wav` (55 MB) is intentionally not shipped; see CREDITS.txt.
 
 const credits = `# Asset credits / 来歴
 
@@ -102,6 +102,9 @@ const credits = `# Asset credits / 来歴
 
 元の Unity プロジェクトの \`LICENSE\` と各 Asset Store のライセンスに従ってください。
 \`Innovation.wav\` (55 MB) はビルドサイズ削減のためコピーしていません。
+
+Flaxia の ZIP 拡張子許可リストに合わせて、FBX/VRM のバイナリは \`.data\` として保存しています
+（three.js の FBXLoader / GLTFLoader は拡張子ではなく内容で判定します）。
 
 「水曜日のダウンタウン」「電気イスゲーム」は番組・権利者に帰属します。
 本プロジェクトは非公式のファンメイド実装です。
@@ -161,7 +164,7 @@ async function main() {
     `${JSON.stringify(manifest, null, 2)}\n`,
     'utf8',
   );
-  await writeFile(join(targetRoot, 'CREDITS.md'), credits, 'utf8');
+  await writeFile(join(targetRoot, 'CREDITS.txt'), credits, 'utf8');
 
   console.log(
     `\nSynced ${Object.keys(manifest.assets).length} files (${(total / 1024 / 1024).toFixed(1)} MB) to ${relative(root, targetRoot)}/`,

@@ -8,6 +8,8 @@
 
 ## いまできること
 
+- 本家セットを意識した白い立方体椅子（凸座面・外側に黒数字）
+- 椅子の内側に白い床数字、前方ステージに黒台座と黄色い電流ボタン
 - 12 脚の椅子による完全ルール実装（40pt 先取 / 3 回感電 / 8 ターン）
 - ホスト権威 + **コミット・リビール**方式の公平な同時選択
 - Flaxia の `postMessage` マルチプレイ（P2P / リレー）対応
@@ -65,13 +67,21 @@ docs/
 
 `Electric-Chair-Game/` の旧 Unity プロジェクトは **読み取り専用の素材置き場** です。
 `pnpm assets:sync` で必要なファイルだけを `public/assets/` にコピーし、
-`public/assets/CREDITS.md` に来歴を残します。詳細は [docs/assets.md](docs/assets.md)。
+`public/assets/CREDITS.txt` に来歴を残します。詳細は [docs/assets.md](docs/assets.md)。
 
 ## Flaxia への投稿
 
-1. `pnpm build`
-2. `dist/` を Flaxia Arcade のゲームとしてアップロード
-3. `gameId` は `denki-isu-3d`（`src/assets/registry.ts`）
+```bash
+pnpm release:flaxia
+# release/electric-chair-game-3d-flaxia.zip       (5.6MB, 推奨)
+# release/electric-chair-game-3d-flaxia-full.zip  (17.2MB, VRM 含む)
+```
+
+ZIP のルートに `index.html` が必要です。`release:flaxia` は Flaxia の WVFS
+拡張子・サイズ・パス検証を通してから出力します。`.fbx` / `.vrm` / `.md` は
+WVFS が拒否してゲームが 404 になるため、素材は `.data` / `.txt` として同梱しています。
+
+ゲームIDは `denki-isu-3d`（`src/assets/registry.ts`）。
 
 サンドボックスは opaque origin のため、`fetch` や直接 WebSocket は使えません。
 アセットは相対 URL、通信は親フレームの `postMessage` のみです。
@@ -82,7 +92,7 @@ docs/
 - ホスト交代時の試合引き継ぎは未対応（退出 = 降参）
 - 効果音/BGM の音量バランス、モバイルの HUD 最適化
 - スコア投稿は勝利時のみ。称号（バッジ）は未実装
-- アセット総量が約 43MB（VRM 15MB を含む）。公開前に圧縮を検討
+- 配布用 ZIP は軽量版 5.6MB / 完全版 17.2MB（圧縮後）
 
 ## クレジット
 

@@ -22,7 +22,10 @@ OpenCode でこのリポジトリを触るエージェント向けの運用ル�
    日本語ファイル名を直接コードから参照しない（ASCII の論理パスを使う）。
 6. アセットは遅延ロードを原則とする。タイトル BGM・動画・VRM を初期表示で
    全部読み込まない（`avatar.ts` は dynamic import）。
-7. Flaxia のサンドボックスは opaque origin。`base: './'`、相対 URL、
+7. Flaxia の ZIP は拡張子許可リストが厳しい。`.fbx` / `.vrm` / `.md` を入れない。
+   3D モデルは `.data`、クレジットは `.txt` として同梱する。
+   提出前に `pnpm release:flaxia`（内部で WVFS 検証）を通す。
+8. Flaxia のサンドボックスは opaque origin。`base: './'`、相対 URL、
    `localStorage` は WVFS シム前提で扱う。
 
 ## よく使うコマンド

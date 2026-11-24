@@ -8,4 +8,6 @@
 *.mp4 binary
 *.vrm binary
 *.fbx binary
+*.bin binary
+*.data binary
 *.ttf binary

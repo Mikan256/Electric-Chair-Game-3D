@@ -13,5 +13,8 @@
 元の Unity プロジェクトの `LICENSE` と各 Asset Store のライセンスに従ってください。
 `Innovation.wav` (55 MB) はビルドサイズ削減のためコピーしていません。
 
+Flaxia の ZIP 拡張子許可リストに合わせて、FBX/VRM のバイナリは `.data` として保存しています
+（three.js の FBXLoader / GLTFLoader は拡張子ではなく内容で判定します）。
+
 「水曜日のダウンタウン」「電気イスゲーム」は番組・権利者に帰属します。
 本プロジェクトは非公式のファンメイド実装です。

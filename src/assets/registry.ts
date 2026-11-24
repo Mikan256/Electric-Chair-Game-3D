@@ -1,18 +1,18 @@
 /**
  * Logical asset map. Files are copied from the legacy Unity project by
- * `pnpm assets:sync`; see public/assets/CREDITS.md.
+ * `pnpm assets:sync`; see public/assets/CREDITS.txt.
  */
 
 export const GAME_ID = 'denki-isu-3d';
 
 export const CHAIR_MODELS = Array.from(
   { length: 12 },
-  (_, index) => `models/chair-${String(index + 1).padStart(2, '0')}.fbx`,
+  (_, index) => `models/chair-${String(index + 1).padStart(2, '0')}.data`,
 );
 
 export const ASSETS = {
-  pedestal: 'models/pedestal.fbx',
-  avatar: 'models/avatar.vrm',
+  pedestal: 'models/pedestal.data',
+  avatar: 'models/avatar.data',
   clock: 'textures/clock.png',
   logo: 'textures/logo.png',
   logoEn: 'textures/logo-en.png',

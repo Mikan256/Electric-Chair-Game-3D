@@ -1,72 +1,72 @@
 {
-  "generatedAt": "2026-11-23T15:39:42.750Z",
+  "generatedAt": "2026-11-24T11:24:24.285Z",
   "assets": {
-    "models/chair-01.fbx": {
+    "models/chair-01.data": {
       "source": "Electric-Chair-Game/Assets/Object/Chair/Block1.fbx",
       "bytes": 26540,
       "sha256": "c7aa205fc7c69dad15ae3ff77ad8d5aa0a049893ee19bfe5ca4eae0f7722ab04"
     },
-    "models/chair-02.fbx": {
+    "models/chair-02.data": {
       "source": "Electric-Chair-Game/Assets/Object/Chair/Block2.fbx",
       "bytes": 34556,
       "sha256": "b41d245c735809b10861fc64edde6789aaecc554e10788af94533e7c9ac26294"
     },
-    "models/chair-03.fbx": {
+    "models/chair-03.data": {
       "source": "Electric-Chair-Game/Assets/Object/Chair/Block3.fbx",
       "bytes": 40236,
       "sha256": "303a346d8ca07a310c3cd8f625a8f3a126936a749b02a78b133b6053c3e793d4"
     },
-    "models/chair-04.fbx": {
+    "models/chair-04.data": {
       "source": "Electric-Chair-Game/Assets/Object/Chair/Block4.fbx",
       "bytes": 27436,
       "sha256": "54d59a334c374945f585b587b7bccf61646822bc9388ef2f311c811d717accc7"
     },
-    "models/chair-05.fbx": {
+    "models/chair-05.data": {
       "source": "Electric-Chair-Game/Assets/Object/Chair/Block5.fbx",
       "bytes": 33724,
       "sha256": "001106fdc94c189835d585abb90e20197ef63c35240c2ccbf92c1d6664d834e8"
     },
-    "models/chair-06.fbx": {
+    "models/chair-06.data": {
       "source": "Electric-Chair-Game/Assets/Object/Chair/Block6.fbx",
       "bytes": 37884,
       "sha256": "452381e39314fcaf6b407f1930cfff7f1b81a29e8ea9a5a1ac5fca1aeffa8662"
     },
-    "models/chair-07.fbx": {
+    "models/chair-07.data": {
       "source": "Electric-Chair-Game/Assets/Object/Chair/Block7.fbx",
       "bytes": 26636,
       "sha256": "262bffdc01656a068e659b859c8f24dba2fa3b771ebfcab9c322c6b44066799d"
     },
-    "models/chair-08.fbx": {
+    "models/chair-08.data": {
       "source": "Electric-Chair-Game/Assets/Object/Chair/Block8.fbx",
       "bytes": 44268,
       "sha256": "4a432f843edf01d8d0d257acb52532277a763e7901061f4790ebcdb3773f484e"
     },
-    "models/chair-09.fbx": {
+    "models/chair-09.data": {
       "source": "Electric-Chair-Game/Assets/Object/Chair/Block9.fbx",
       "bytes": 39020,
       "sha256": "9965cb6dfccf1259bb0aad90603648096b7f0956bc1e44da7250b944e227ea5a"
     },
-    "models/chair-10.fbx": {
+    "models/chair-10.data": {
       "source": "Electric-Chair-Game/Assets/Object/Chair/Block10.fbx",
       "bytes": 35212,
       "sha256": "93783a48caf76d83c50699fdf0334091c12a8ef552516b31e7456a66d75ef827"
     },
-    "models/chair-11.fbx": {
+    "models/chair-11.data": {
       "source": "Electric-Chair-Game/Assets/Object/Chair/Block11.fbx",
       "bytes": 26652,
       "sha256": "e7736ca214d3bce4be7135b36b555357e991b6ddcdd3d248f988923afaa4d70f"
     },
-    "models/chair-12.fbx": {
+    "models/chair-12.data": {
       "source": "Electric-Chair-Game/Assets/Object/Chair/Block12.fbx",
       "bytes": 34844,
       "sha256": "372a04c096323e33c06b1149ac4ec8e6983346e8351e6a00f3b91dd531a36adb"
     },
-    "models/pedestal.fbx": {
+    "models/pedestal.data": {
       "source": "Electric-Chair-Game/Assets/Object/その他/台座.fbx",
       "bytes": 28572,
       "sha256": "27d9425aa9715ee89b95ec4bc1da27071816967b99e199f6f6b3e10e6c1e4082"
     },
-    "models/avatar.vrm": {
+    "models/avatar.data": {
       "source": "Electric-Chair-Game/Assets/Object/その他/電気椅子ゲーム.vrm",
       "bytes": 15647416,
       "sha256": "93e37d760478191786368c77af0974e45d543e6a4c2e4304c6af9e22566c448b"
