@@ -1,0 +1,820 @@
+/* MATCH LOG / 試合経過 — 画面下のボタンから開く通常 UI パネル。
+   styles.css のトークンをフォールバック付きで使い、単体でも成立させる。
+   350〜390px 幅でも横スクロールせず、表だけ縦スクロールする。 */
+
+.match-log-panel,
+.match-log-panel * {
+  box-sizing: border-box;
+}
+
+.match-log-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(8px, 2.4vw, 28px);
+  color: var(--text, #f4edf0);
+  font-family:
+    var(--font-body, 'Hiragino Kaku Gothic ProN'), 'Hiragino Sans', 'Noto Sans JP', 'Yu Gothic',
+    Meiryo, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  pointer-events: auto;
+  isolation: isolate;
+}
+
+.match-log-panel[hidden] {
+  display: none;
+}
+
+/* --------------------------------------------------------------- backdrop */
+
+.match-log-panel__backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 42%, rgba(3, 3, 7, 0.5), rgba(2, 2, 6, 0.82) 78%),
+    linear-gradient(180deg, rgba(255, 36, 66, 0.05), transparent 35%, rgba(255, 209, 102, 0.04));
+  backdrop-filter: blur(4px);
+  animation: match-log-fade-in 0.2s ease-out both;
+}
+
+/* ---------------------------------------------------------------- dialog */
+
+.match-log-panel__dialog {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: min(780px, 100%);
+  max-height: min(88vh, 760px);
+  max-height: min(88dvh, 760px);
+  overflow: hidden;
+  border: 1px solid rgba(255, 36, 66, 0.45);
+  background:
+    linear-gradient(135deg, rgba(255, 36, 66, 0.09), transparent 42%),
+    linear-gradient(180deg, rgba(10, 10, 18, 0.97), rgba(4, 4, 9, 0.98));
+  box-shadow:
+    0 22px 70px rgba(0, 0, 0, 0.68),
+    inset 0 0 46px rgba(255, 36, 66, 0.05);
+  clip-path: polygon(
+    0 0,
+    calc(100% - 20px) 0,
+    100% 20px,
+    100% 100%,
+    20px 100%,
+    0 calc(100% - 20px)
+  );
+  animation: match-log-rise 0.24s ease-out both;
+}
+
+.match-log-panel__dialog::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 22%;
+  left: 22%;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--gold, #ffd166),
+    var(--red, #ff2442),
+    transparent
+  );
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* ----------------------------------------------------------------- header */
+
+.match-log-panel__header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: clamp(14px, 2.4vw, 22px) clamp(14px, 3vw, 26px) 10px;
+}
+
+.match-log-panel__heading {
+  min-width: 0;
+}
+
+.match-log-panel__kicker {
+  margin: 0 0 4px;
+  color: var(--red-soft, #ff7588);
+  font-size: 9px;
+  letter-spacing: 0.32em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.match-log-panel__title {
+  margin: 0;
+  color: var(--text, #f4edf0);
+  font-family:
+    var(--font-display, 'Zekton'), 'Arial Black', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP',
+    sans-serif;
+  font-size: clamp(18px, 4vw, 26px);
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  line-height: 1.1;
+}
+
+.match-log-panel__title-jp {
+  color: var(--gold, #ffd166);
+  font-family:
+    var(--font-body, 'Hiragino Kaku Gothic ProN'), 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  font-size: 0.58em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.match-log-panel__close {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 6px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted, #9b94a6);
+  font-family:
+    var(--font-display, 'Zekton'), 'Arial Black', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP',
+    sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.match-log-panel__close-x {
+  color: var(--text, #f4edf0);
+  font-family: var(--font-body, sans-serif);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.match-log-panel__close:hover {
+  border-color: var(--red, #ff2442);
+  background: rgba(255, 36, 66, 0.12);
+  color: var(--text, #f4edf0);
+}
+
+.match-log-panel__close:focus-visible {
+  outline: none;
+  border-color: var(--gold, #ffd166);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 209, 102, 0.85),
+    0 0 16px rgba(255, 209, 102, 0.3);
+}
+
+/* ------------------------------------------------------------------- meta */
+
+.match-log-panel__meta {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 0 clamp(14px, 3vw, 26px) 12px;
+}
+
+.match-log-panel__turn {
+  color: var(--gold, #ffd166);
+  font-family:
+    var(--font-display, 'Zekton'), 'Arial Black', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP',
+    sans-serif;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.16em;
+}
+
+.match-log-panel__phase {
+  padding: 3px 9px;
+  border: 1px solid rgba(159, 232, 255, 0.4);
+  background: rgba(159, 232, 255, 0.08);
+  color: var(--cyan, #9fe8ff);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+}
+
+.match-log-panel__dialog[data-phase='set'] .match-log-panel__phase {
+  border-color: rgba(255, 169, 77, 0.5);
+  background: rgba(255, 169, 77, 0.1);
+  color: #ffb366;
+}
+
+.match-log-panel__dialog[data-phase='press'] .match-log-panel__phase {
+  border-color: rgba(255, 36, 66, 0.55);
+  background: rgba(255, 36, 66, 0.12);
+  color: var(--red-soft, #ff7588);
+}
+
+.match-log-panel__dialog[data-phase='result'] .match-log-panel__phase {
+  border-color: rgba(255, 209, 102, 0.5);
+  background: rgba(255, 209, 102, 0.1);
+  color: var(--gold, #ffd166);
+}
+
+.match-log-panel__dialog[data-phase='finished'] .match-log-panel__phase {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted, #9b94a6);
+}
+
+/* ---------------------------------------------------------------- players */
+
+.match-log-panel__players {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 clamp(14px, 3vw, 26px) 12px;
+}
+
+.match-log-panel__player {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.035), transparent 60%);
+}
+
+.match-log-panel__player.is-attacker {
+  border-color: rgba(255, 36, 66, 0.55);
+  background: linear-gradient(135deg, rgba(255, 36, 66, 0.12), transparent 64%);
+}
+
+.match-log-panel__player.is-you {
+  box-shadow: inset 0 0 0 1px rgba(255, 209, 102, 0.28);
+}
+
+.match-log-panel__player-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.match-log-panel__role {
+  overflow: hidden;
+  color: var(--muted, #9b94a6);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.match-log-panel__player.is-attacker .match-log-panel__role {
+  color: var(--red-soft, #ff7588);
+}
+
+.match-log-panel__you {
+  flex: 0 0 auto;
+  padding: 1px 4px;
+  border: 1px solid rgba(255, 209, 102, 0.5);
+  color: var(--gold, #ffd166);
+  font-family:
+    var(--font-display, 'Zekton'), 'Arial Black', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP',
+    sans-serif;
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  line-height: 1.3;
+}
+
+.match-log-panel__player-name {
+  overflow: hidden;
+  margin-top: 3px;
+  color: var(--text, #f4edf0);
+  font-family:
+    var(--font-display, 'Zekton'), 'Arial Black', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP',
+    sans-serif;
+  font-size: clamp(13px, 3.2vw, 16px);
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.match-log-panel__stats {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 5px;
+}
+
+.match-log-panel__points {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  min-width: 0;
+  color: var(--gold, #ffd166);
+  font-family:
+    var(--font-display, 'Zekton'), 'Arial Black', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP',
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.match-log-panel__points-value {
+  font-size: clamp(18px, 4.6vw, 24px);
+  font-weight: 900;
+}
+
+.match-log-panel__points-unit {
+  color: var(--muted, #9b94a6);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.match-log-panel__shocks {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 0;
+  line-height: 1.2;
+  text-align: right;
+}
+
+.match-log-panel__shocks-label {
+  overflow: hidden;
+  color: var(--muted, #9b94a6);
+  font-size: 7px;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.match-log-panel__shocks-value {
+  color: var(--text, #f4edf0);
+  font-family:
+    var(--font-display, 'Zekton'), 'Arial Black', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP',
+    sans-serif;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+/* ------------------------------------------------------------------ table */
+
+.match-log-panel__table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0 clamp(8px, 2vw, 20px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 209, 102, 0.2);
+  background: rgba(3, 3, 7, 0.55);
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(255, 209, 102, 0.35) transparent;
+  scrollbar-width: thin;
+}
+
+.match-log-panel__table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: clamp(11px, 2.8vw, 13px);
+}
+
+.match-log-panel__table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 7px 4px;
+  border-bottom: 1px solid rgba(255, 209, 102, 0.3);
+  background: #0c0c16;
+  color: rgba(255, 209, 102, 0.72);
+  font-size: clamp(8px, 2vw, 10px);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.3;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.match-log-panel__table th:nth-child(1) {
+  width: 8%;
+}
+
+.match-log-panel__table th:nth-child(2) {
+  width: 28%;
+}
+
+.match-log-panel__table th:nth-child(3) {
+  width: 12%;
+}
+
+.match-log-panel__table th:nth-child(4) {
+  width: 14%;
+}
+
+.match-log-panel__table th:nth-child(5) {
+  width: 19%;
+}
+
+.match-log-panel__table th:nth-child(6) {
+  width: 19%;
+}
+
+.match-log-panel__table td {
+  padding: 7px 4px;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: #dfe5f2;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.match-log-panel__table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.match-log-panel__table tbody tr:nth-child(even):not(.is-current) td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.match-log-panel__turn-cell {
+  color: var(--muted, #9b94a6);
+  font-family:
+    var(--font-display, 'Zekton'), 'Arial Black', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP',
+    sans-serif;
+  font-size: 0.92em;
+  letter-spacing: 0.04em;
+}
+
+.match-log-panel__attacker {
+  padding-left: 8px !important;
+  text-align: left !important;
+}
+
+.match-log-panel__chair {
+  font-family:
+    var(--font-display, 'Zekton'), 'Arial Black', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP',
+    sans-serif;
+  font-weight: 800;
+}
+
+.match-log-panel__chair.is-empty {
+  color: rgba(255, 255, 255, 0.28);
+}
+
+.match-log-panel__wired-unknown {
+  color: rgba(255, 209, 102, 0.75);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.match-log-panel__row.is-current td {
+  background: linear-gradient(90deg, rgba(255, 209, 102, 0.16), rgba(255, 209, 102, 0.06));
+  color: var(--text, #f4edf0);
+}
+
+.match-log-panel__row.is-current td:first-child {
+  box-shadow: inset 3px 0 0 var(--gold, #ffd166);
+}
+
+.match-log-panel__row.is-current .match-log-panel__turn-cell {
+  color: var(--gold, #ffd166);
+}
+
+.match-log-panel__result {
+  display: inline-block;
+  min-width: 4.6em;
+  padding: 2px 5px;
+  border: 1px solid transparent;
+  font-family:
+    var(--font-display, 'Zekton'), 'Arial Black', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP',
+    sans-serif;
+  font-size: 0.85em;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.match-log-panel__result--shock {
+  border-color: rgba(255, 36, 66, 0.55);
+  background: rgba(255, 36, 66, 0.14);
+  color: var(--red-soft, #ff7588);
+}
+
+.match-log-panel__result--safe {
+  border-color: rgba(33, 224, 138, 0.5);
+  background: rgba(33, 224, 138, 0.1);
+  color: var(--green, #21e08a);
+}
+
+.match-log-panel__result--pending {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted, #9b94a6);
+}
+
+.match-log-panel__points-cell {
+  font-family:
+    var(--font-display, 'Zekton'), 'Arial Black', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP',
+    sans-serif;
+  font-size: 0.94em;
+  font-weight: 800;
+}
+
+.match-log-panel__points-value--0 {
+  color: var(--cyan, #9fe8ff);
+}
+
+.match-log-panel__points-value--1 {
+  color: #ffb366;
+}
+
+.match-log-panel__points-separator {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+/* ----------------------------------------------------------------- footer */
+
+.match-log-panel__footer {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 6px 18px;
+  padding: 10px clamp(14px, 3vw, 26px) clamp(12px, 2.4vw, 20px);
+  border-top: 1px solid rgba(255, 209, 102, 0.14);
+}
+
+.match-log-panel__retired {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.match-log-panel__retired-label {
+  color: rgba(255, 209, 102, 0.65);
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  line-height: 1.3;
+}
+
+.match-log-panel__retired-value {
+  overflow: hidden;
+  color: var(--gold, #ffd166);
+  font-family:
+    var(--font-display, 'Zekton'), 'Arial Black', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP',
+    sans-serif;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.match-log-panel__retired-value.is-empty {
+  color: var(--muted, #9b94a6);
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.match-log-panel__status {
+  flex: 1 1 180px;
+  min-width: 0;
+  margin: 0;
+  color: #d9d1de;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  line-height: 1.5;
+  text-align: right;
+}
+
+/* -------------------------------------------------------------- animations */
+
+@keyframes match-log-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes match-log-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ------------------------------------------------------------------ mobile */
+
+@media (max-width: 420px) {
+  .match-log-panel {
+    padding: 6px;
+  }
+
+  .match-log-panel__dialog {
+    width: 100%;
+    max-height: 94vh;
+    max-height: 94dvh;
+  }
+
+  .match-log-panel__header {
+    gap: 8px;
+    padding: 12px 12px 8px;
+  }
+
+  .match-log-panel__kicker {
+    font-size: 8px;
+    letter-spacing: 0.24em;
+  }
+
+  .match-log-panel__title {
+    font-size: 17px;
+  }
+
+  .match-log-panel__title-jp {
+    display: block;
+    margin-top: 2px;
+    font-size: 10px;
+  }
+
+  .match-log-panel__close {
+    min-width: 40px;
+    min-height: 40px;
+    padding: 4px 8px;
+  }
+
+  .match-log-panel__close-label {
+    display: none;
+  }
+
+  .match-log-panel__meta {
+    gap: 4px 8px;
+    padding: 0 12px 8px;
+  }
+
+  .match-log-panel__turn {
+    font-size: 10px;
+  }
+
+  .match-log-panel__phase {
+    padding: 2px 7px;
+    font-size: 9px;
+  }
+
+  .match-log-panel__players {
+    gap: 6px;
+    padding: 0 10px 8px;
+  }
+
+  .match-log-panel__player {
+    padding: 6px 7px;
+  }
+
+  .match-log-panel__role {
+    font-size: 8px;
+    letter-spacing: 0.06em;
+  }
+
+  .match-log-panel__player-name {
+    font-size: 12px;
+  }
+
+  .match-log-panel__stats {
+    gap: 4px;
+    margin-top: 4px;
+  }
+
+  .match-log-panel__points-value {
+    font-size: 18px;
+  }
+
+  .match-log-panel__shocks-label {
+    font-size: 6px;
+    letter-spacing: 0;
+  }
+
+  .match-log-panel__shocks-value {
+    font-size: 11px;
+  }
+
+  .match-log-panel__table-wrap {
+    margin: 0 8px;
+  }
+
+  .match-log-panel__table {
+    font-size: 10px;
+  }
+
+  .match-log-panel__table th {
+    padding: 5px 2px;
+    font-size: 8px;
+    letter-spacing: 0.02em;
+  }
+
+  .match-log-panel__table td {
+    padding: 5px 2px;
+  }
+
+  .match-log-panel__attacker {
+    padding-left: 5px !important;
+  }
+
+  .match-log-panel__result {
+    min-width: 0;
+    padding: 1px 2px;
+    font-size: 0.82em;
+    letter-spacing: 0;
+  }
+
+  .match-log-panel__points-cell {
+    font-size: 0.86em;
+  }
+
+  .match-log-panel__footer {
+    align-items: flex-start;
+    gap: 4px 10px;
+    padding: 8px 12px 12px;
+  }
+
+  .match-log-panel__status {
+    flex-basis: 100%;
+    font-size: 9px;
+    text-align: left;
+  }
+}
+
+/* Flaxia の小さいプレイヤー（600×400 など）向け。 */
+@media (max-height: 560px) {
+  .match-log-panel__header {
+    padding-top: 8px;
+    padding-bottom: 6px;
+  }
+
+  .match-log-panel__kicker {
+    margin-bottom: 2px;
+  }
+
+  .match-log-panel__title {
+    font-size: 18px;
+  }
+
+  .match-log-panel__meta {
+    padding-bottom: 8px;
+  }
+
+  .match-log-panel__players {
+    padding-bottom: 8px;
+  }
+
+  .match-log-panel__player {
+    padding: 5px 8px;
+  }
+
+  .match-log-panel__table td {
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  .match-log-panel__footer {
+    padding-top: 7px;
+    padding-bottom: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .match-log-panel__backdrop,
+  .match-log-panel__dialog {
+    animation: none;
+  }
+
+  .match-log-panel__close {
+    transition: none;
+  }
+}

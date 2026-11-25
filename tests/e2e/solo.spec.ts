@@ -48,6 +48,8 @@ test.describe('solo vertical slice', () => {
 
     // Solo CPU sits automatically; the human attacker must press the button.
     await expect(page.locator('#btn-press')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.ft-call')).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('.ft-call')).toContainText('TARGET LOCKED');
     await page.locator('#btn-press').click();
 
     await expect(page.locator('#result-overlay')).toBeVisible({ timeout: 15_000 });

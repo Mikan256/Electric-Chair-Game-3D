@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { VRM } from '@pixiv/three-vrm';
 import { assetUrl, ASSETS } from '@/assets/registry';
 import type { MatchView } from '@/game/types';
-import { FINAL_THUNDER_CUTSCENE_MS } from '@/game/timing';
+import { FINAL_THUNDER_STANDARD_PRE_PRESS_MS } from '@/game/timing';
 import { chairLayout } from './chair';
 
 type Vec3 = readonly [number, number, number];
@@ -94,15 +94,16 @@ const SLAM: Pose = {
   rightLowerArm: [-0.4, 0, 0],
 };
 
-/** 座ったまま身構える。 */
+/** 座ったまま前屈みになり、膝の上で手を握る。 */
 const BRACE: Pose = {
   ...SIT,
-  spine: [-0.18, 0, 0],
-  chest: [-0.1, 0, 0],
-  leftUpperArm: [-0.6, 0, -1.3],
-  rightUpperArm: [-0.6, 0, 1.3],
-  leftLowerArm: [-0.6, 0, 0],
-  rightLowerArm: [-0.6, 0, 0],
+  spine: [0.24, 0, 0],
+  chest: [0.15, 0, 0],
+  head: [-0.08, 0, 0],
+  leftUpperArm: [-0.25, 0, -1.08],
+  rightUpperArm: [-0.25, 0, 1.08],
+  leftLowerArm: [0, -0.45, -0.55],
+  rightLowerArm: [0, 0.45, 0.55],
 };
 
 /** 感電した瞬間。 */
@@ -128,6 +129,133 @@ const RELIEF: Pose = {
   chest: [0.08, 0, 0],
   head: [0.12, 0, 0],
 };
+
+/** 高stakesで一度手を引いて迷う。片手を腰に当てて考える。 */
+const HESITATE: Pose = {
+  ...STAND,
+  spine: [0.06, 0, 0],
+  chest: [0.02, 0, 0],
+  head: [0.08, 0, 0],
+  rightUpperArm: [-0.5, 0, 1.15],
+  rightLowerArm: [-0.55, 0, 0],
+  leftUpperArm: [-1.25, 0, -0.5],
+  leftLowerArm: [0, 0, -1.6],
+};
+
+/** 感電させた側ののけぞり。 */
+const ATTACKER_RECOIL: Pose = {
+  ...STAND,
+  hips: [-0.04, 0, 0],
+  spine: [-0.24, 0, 0],
+  chest: [-0.12, 0, 0],
+  head: [-0.2, 0, 0],
+  leftUpperArm: [-0.45, 0, -1.45],
+  rightUpperArm: [-0.45, 0, 1.45],
+  leftLowerArm: [-0.3, 0, 0],
+  rightLowerArm: [-0.3, 0, 0],
+};
+
+/** 回避された側の安堵。肩を落として息を吐く。 */
+const ATTACKER_RELIEF: Pose = {
+  ...STAND,
+  spine: [0.18, 0, 0],
+  chest: [0.1, 0, 0],
+  head: [0.16, 0, 0],
+  leftUpperArm: [-0.15, 0, -1.0],
+  rightUpperArm: [-0.2, 0, 1.0],
+  leftLowerArm: [-0.3, 0, 0],
+  rightLowerArm: [-0.35, 0, 0],
+};
+
+export type DuelistAction =
+  | 'stand'
+  | 'sit'
+  | 'reach'
+  | 'hold'
+  | 'withdraw'
+  | 'brace'
+  | 'slam'
+  | 'recoil'
+  | 'relief'
+  | 'shock';
+
+export interface DuelistBlinkDebug {
+  readonly supported: boolean;
+  readonly value: number;
+  readonly count: number;
+}
+
+export interface DuelistDebugState {
+  readonly mode: 'primitive' | 'vrm';
+  readonly cutsceneActive: boolean;
+  readonly pressHold: boolean;
+  readonly pressElapsedMs: number;
+  readonly attackerAction: DuelistAction;
+  readonly defenderAction: DuelistAction;
+  readonly attackerBlink: DuelistBlinkDebug;
+  readonly defenderBlink: DuelistBlinkDebug;
+}
+
+/** 台座へ手を伸ばし切るまでの時間。プレス前演出の最短尺でも必ず確保する。 */
+const REACH_MS = 800;
+
+/** 押下後の演技（SLAM → のけぞり/安堵、SHOCK/RELIEF）の長さ。 */
+const RESULT_MS = 1600;
+
+/** ホールド中の手の震え・上体の揺れ・深呼吸。 */
+function holdOffsets(seconds: number, intensity: number): Pose {
+  const tremor = Math.sin(seconds * Math.PI * 2 * 5.5) * 0.05 * intensity;
+  const tremorAlt = Math.sin(seconds * Math.PI * 2 * 7.3 + 1.1) * 0.032 * intensity;
+  const breath = Math.sin(seconds * Math.PI * 2 * 0.32) * 0.022;
+  const sway = Math.sin(seconds * Math.PI * 2 * 0.43 + 0.7) * 0.03 * intensity;
+  return {
+    spine: [breath, 0, sway],
+    chest: [breath * 0.7, 0, -sway * 0.5],
+    neck: [tremorAlt * 0.4, 0, 0],
+    rightUpperArm: [tremor, 0, tremorAlt],
+    rightLowerArm: [tremorAlt, 0, 0],
+    rightHand: [tremor * 1.2, 0, tremorAlt * 1.2],
+  };
+}
+
+/** 座ったまま膝を握って震える。 */
+function braceOffsets(seconds: number, intensity: number): Pose {
+  const shake = Math.sin(seconds * Math.PI * 2 * 6.1) * 0.018 * intensity;
+  const breath = Math.sin(seconds * Math.PI * 2 * 0.3 + 0.4) * 0.02;
+  return {
+    spine: [shake * 0.6, 0, breath],
+    chest: [shake, 0, 0],
+    leftUpperArm: [shake, 0, 0],
+    rightUpperArm: [-shake, 0, 0],
+    leftHand: [shake * 1.2, 0, 0],
+    rightHand: [-shake * 1.2, 0, 0],
+  };
+}
+
+/** 立ち/座り中の呼吸。spine と chest の微振動だけを足す。 */
+function breathOffsets(seconds: number, seated: boolean): Pose {
+  const rate = seated ? 0.24 : 0.3;
+  const breath = Math.sin(seconds * Math.PI * 2 * rate);
+  const chest = Math.sin(seconds * Math.PI * 2 * rate - 0.35);
+  return {
+    spine: [breath * 0.014, 0, 0],
+    chest: [chest * 0.018, 0, 0],
+    neck: [-breath * 0.006, 0, 0],
+  };
+}
+
+/** 感電中の痙攣。 */
+function convulse(pose: Pose, seconds: number): Pose {
+  const jolt = Math.sin(seconds * Math.PI * 2 * 9.5);
+  const joltAlt = Math.sin(seconds * Math.PI * 2 * 13.7 + 0.8);
+  return addPoseOffsets(pose, {
+    spine: [jolt * 0.08, joltAlt * 0.03, joltAlt * 0.04],
+    chest: [joltAlt * 0.05, 0, jolt * 0.03],
+    head: [joltAlt * 0.09, jolt * 0.05, 0],
+    leftUpperArm: [jolt * 0.06, 0, 0],
+    rightUpperArm: [-jolt * 0.06, 0, 0],
+  });
+}
 
 const PRIMITIVE_ATTACKER = 0xb51f2f;
 const PRIMITIVE_DEFENDER = 0x207a9e;
@@ -223,6 +351,27 @@ function ease(t: number): number {
   return x * x * (3 - 2 * x);
 }
 
+/** ポーズの一部の骨へ相対回転を足した新しいポーズを返す。定数は書き換えない。 */
+function addPoseOffsets(pose: Pose, offsets: Pose): Pose {
+  const result: Pose = { ...pose };
+  for (const bone of POSE_BONES) {
+    const offset = offsets[bone];
+    if (!offset) continue;
+    const base = result[bone] ?? ZERO;
+    result[bone] = [base[0] + offset[0], base[1] + offset[1], base[2] + offset[2]];
+  }
+  return result;
+}
+
+/** start〜end の間だけ 0→1→0 になる窓。端は fadeMs でなだらかにする。 */
+function windowWeight(elapsedMs: number, startMs: number, endMs: number): number {
+  if (elapsedMs <= startMs || elapsedMs >= endMs) return 0;
+  const fade = Math.min(220, (endMs - startMs) / 2);
+  if (elapsedMs < startMs + fade) return ease((elapsedMs - startMs) / fade);
+  if (elapsedMs > endMs - fade) return ease((endMs - elapsedMs) / fade);
+  return 1;
+}
+
 function disposeObject(root: THREE.Object3D): void {
   const materials = new Set<THREE.Material>();
   root.traverse((child) => {
@@ -239,11 +388,17 @@ interface DuelistRig {
   applyPose(pose: Pose, blend: number): void;
   update(dt: number): void;
   dispose(): void;
+  expressionDebug?(): DuelistBlinkDebug;
 }
 
 class VrmRig implements DuelistRig {
   readonly object: THREE.Group;
   private readonly vrm: VRM;
+  private blinkSupported: boolean | null = null;
+  private blinkClock = 0;
+  private blinkStartedAt = -1;
+  private blinkCount = 0;
+  private nextBlinkAt = 3 + Math.random() * 3;
 
   constructor(vrm: VRM) {
     this.vrm = vrm;
@@ -266,7 +421,52 @@ class VrmRig implements DuelistRig {
   }
 
   update(dt: number): void {
+    this.updateBlink(dt);
     this.vrm.update(dt);
+  }
+
+  expressionDebug(): DuelistBlinkDebug {
+    const value = this.vrm.expressionManager?.getValue('blink') ?? 0;
+    return {
+      supported: this.blinkSupported === true,
+      value,
+      count: this.blinkCount,
+    };
+  }
+
+  /**
+   * 'blink' 表情があるときだけ 0.2 秒のまばたきを 3〜6 秒間隔で再生する。
+   * 表情の有無は初回だけ調べ、毎フレームの検索はしない。
+   */
+  private updateBlink(dt: number): void {
+    if (this.blinkSupported === null) {
+      this.blinkSupported = Boolean(this.vrm.expressionManager?.getExpression('blink'));
+    }
+    const manager = this.vrm.expressionManager;
+    if (!this.blinkSupported || !manager) return;
+
+    this.blinkClock += dt;
+    if (this.blinkStartedAt < 0) {
+      if (this.blinkClock < this.nextBlinkAt) return;
+      this.blinkStartedAt = this.blinkClock;
+      this.blinkCount += 1;
+    }
+
+    const elapsed = this.blinkClock - this.blinkStartedAt;
+    let value: number;
+    if (elapsed < 0.06) {
+      value = elapsed / 0.06;
+    } else if (elapsed < 0.12) {
+      value = 1;
+    } else if (elapsed < 0.2) {
+      value = 1 - (elapsed - 0.12) / 0.08;
+    } else {
+      manager.setValue('blink', 0);
+      this.blinkStartedAt = -1;
+      this.nextBlinkAt = this.blinkClock + 3 + Math.random() * 3;
+      return;
+    }
+    manager.setValue('blink', value);
   }
 
   dispose(): void {
@@ -444,6 +644,10 @@ class Duelist {
     this.rig.update(dt);
   }
 
+  blinkDebug(): DuelistBlinkDebug {
+    return this.rig.expressionDebug?.() ?? { supported: false, value: 0, count: 0 };
+  }
+
   dispose(): void {
     this.root.removeFromParent();
     this.rig.dispose();
@@ -487,9 +691,16 @@ export class DuelistSet {
   private lastView: MatchView | null = null;
   private previewChairValue: number | null = null;
   private cutsceneStart = 0;
+  private cutsceneDurationMs = FINAL_THUNDER_STANDARD_PRE_PRESS_MS;
+  private cutsceneHighStakes = false;
+  private pressStart = 0;
+  private pressHold = false;
   private resultStart = 0;
   private resultHit = false;
   private lastResultAt = 0;
+  private elapsedSeconds = 0;
+  private lastAttackerAction: DuelistAction = 'stand';
+  private lastDefenderAction: DuelistAction = 'sit';
 
   constructor(options: DuelistSetOptions) {
     this.pedestalPosition = options.pedestalPosition.clone();
@@ -505,6 +716,20 @@ export class DuelistSet {
   /** デバッグ用: ファイナルサンダー中にプレビューしている椅子。 */
   get previewChair(): number | null {
     return this.previewChairValue;
+  }
+
+  /** E2E/デバッグ用: 現在の演技ラベルとまばたきの状態。 */
+  get debugState(): DuelistDebugState {
+    return {
+      mode: this.modeValue,
+      cutsceneActive: this.cutsceneActive,
+      pressHold: this.pressHold,
+      pressElapsedMs: this.pressStart > 0 ? performance.now() - this.pressStart : 0,
+      attackerAction: this.lastAttackerAction,
+      defenderAction: this.lastDefenderAction,
+      attackerBlink: this.attacker.blinkDebug(),
+      defenderBlink: this.defender.blinkDebug(),
+    };
   }
 
   get cutsceneActive(): boolean {
@@ -528,6 +753,14 @@ export class DuelistSet {
     // 次の set フェーズ（sittingChair が null）で古い椅子に座り続けてしまう。
     if (view.sittingChair !== null) this.previewChairValue = null;
 
+    // press 中はカットシーンの尺が終わってもボタン待ちのホールドを続ける。
+    if (view.phase === 'press') {
+      this.pressHold = true;
+    } else if (view.phase !== 'result') {
+      this.pressHold = false;
+      this.pressStart = 0;
+    }
+
     this.syncDefender();
   }
 
@@ -541,8 +774,22 @@ export class DuelistSet {
     this.syncDefender();
   }
 
-  playFinalThunder(): void {
-    this.cutsceneStart = performance.now();
+  /**
+   * プレス前演出を開始する。`durationMs` はボタンが有効になるまでの尺で、
+   * 統合側は `finalThunderTiming(view).prePressMs` を渡す。
+   * 尺が終わっても押下までは REACH ホールドを継続する（スラムはしない）。
+   */
+  playFinalThunder(durationMs: number = FINAL_THUNDER_STANDARD_PRE_PRESS_MS): void {
+    const requested = Number.isFinite(durationMs)
+      ? durationMs
+      : FINAL_THUNDER_STANDARD_PRE_PRESS_MS;
+    const total = Math.max(REACH_MS, requested);
+    const now = performance.now();
+    this.cutsceneStart = now;
+    this.cutsceneDurationMs = total;
+    this.cutsceneHighStakes = total > FINAL_THUNDER_STANDARD_PRE_PRESS_MS + 1;
+    this.pressStart = now;
+    this.pressHold = true;
     this.resultStart = 0;
   }
 
@@ -551,6 +798,8 @@ export class DuelistSet {
     if (now - this.lastResultAt < 400) return;
     this.lastResultAt = now;
     this.cutsceneStart = 0;
+    this.pressHold = false;
+    this.pressStart = 0;
     this.resultStart = now;
     this.resultHit = hit;
   }
@@ -562,65 +811,167 @@ export class DuelistSet {
     this.lastView = null;
     this.previewChairValue = null;
     this.cutsceneStart = 0;
+    this.cutsceneDurationMs = FINAL_THUNDER_STANDARD_PRE_PRESS_MS;
+    this.cutsceneHighStakes = false;
+    this.pressStart = 0;
+    this.pressHold = false;
     this.resultStart = 0;
     this.resultHit = false;
+    this.lastAttackerAction = 'stand';
+    this.lastDefenderAction = 'sit';
   }
 
   update(dt: number): void {
     if (this.disposed) return;
+    this.elapsedSeconds += dt;
     if (!this.hasView && this.previewChairValue === null) return;
     const now = performance.now();
-    const blend = Math.min(1, dt * 14);
+    const pressElapsedMs = this.pressStart > 0 ? now - this.pressStart : 0;
+    const performing = this.cutsceneStart > 0 || this.resultStart > 0 || this.pressHold;
+    const blend = Math.min(1, dt * (performing ? 26 : 14));
     let attackerPose: Pose = STAND;
     let defenderPose: Pose = SIT;
+    let attackerAction: DuelistAction = 'stand';
+    let defenderAction: DuelistAction = 'sit';
 
-    if (this.cutsceneStart > 0) {
-      const t = (now - this.cutsceneStart) / FINAL_THUNDER_CUTSCENE_MS;
-      if (t >= 1) {
-        this.cutsceneStart = 0;
-      } else {
-        attackerPose =
-          t < 0.35
-            ? mixPose(STAND, REACH, ease(t / 0.35))
-            : t < 0.65
-              ? REACH
-              : t < 0.8
-                ? mixPose(REACH, SLAM, ease((t - 0.65) / 0.15))
-                : mixPose(SLAM, STAND, ease((t - 0.8) / 0.2));
-        defenderPose =
-          t < 0.25
-            ? mixPose(SIT, BRACE, ease(t / 0.25))
-            : t < 0.8
-              ? BRACE
-              : mixPose(BRACE, SIT, ease((t - 0.8) / 0.2));
-      }
+    // カットシーンの尺は終わったが、押下まではホバーを続ける。
+    if (this.cutsceneStart > 0 && pressElapsedMs >= this.cutsceneDurationMs) {
+      this.cutsceneStart = 0;
+    }
+
+    if (
+      this.cutsceneStart > 0 ||
+      (this.pressHold && this.pressStart > 0 && this.resultStart === 0)
+    ) {
+      const shot = this.finalThunderPose(pressElapsedMs);
+      attackerPose = shot.attacker;
+      defenderPose = shot.defender;
+      attackerAction = shot.attackerAction;
+      defenderAction = shot.defenderAction;
     }
 
     if (this.resultStart > 0) {
-      const t = (now - this.resultStart) / 1200;
-      if (t >= 1) {
+      const elapsedMs = now - this.resultStart;
+      if (elapsedMs >= RESULT_MS) {
         this.resultStart = 0;
-      } else if (this.resultHit) {
-        defenderPose =
-          t < 0.2
-            ? mixPose(SIT, SHOCK, ease(t / 0.2))
-            : t < 0.7
-              ? SHOCK
-              : mixPose(SHOCK, SIT, ease((t - 0.7) / 0.3));
       } else {
-        defenderPose =
-          t < 0.3
-            ? mixPose(SIT, RELIEF, ease(t / 0.3))
-            : t < 0.7
-              ? RELIEF
-              : mixPose(RELIEF, SIT, ease((t - 0.7) / 0.3));
+        const shot = this.resultPose(elapsedMs, this.resultHit);
+        attackerPose = shot.attacker;
+        defenderPose = shot.defender;
+        attackerAction = shot.attackerAction;
+        defenderAction = shot.defenderAction;
       }
+    }
+
+    if (this.cutsceneStart === 0 && this.resultStart === 0 && !this.pressHold) {
+      attackerPose = addPoseOffsets(attackerPose, breathOffsets(this.elapsedSeconds, false));
+      defenderPose = addPoseOffsets(defenderPose, breathOffsets(this.elapsedSeconds, true));
     }
 
     this.attacker.setPose(attackerPose, blend);
     if (this.defender.root.visible) this.defender.setPose(defenderPose, blend);
     this.attacker.update(dt);
     if (this.defender.root.visible) this.defender.update(dt);
+    this.lastAttackerAction = attackerAction;
+    this.lastDefenderAction = defenderAction;
+  }
+
+  /**
+   * プレス前の演技。0〜0.8s は STAND→REACH、以降は REACH のまま
+   * 手の震え・上体の揺れ・深呼吸を足す。スラムは playResult まで起こさない。
+   */
+  private finalThunderPose(elapsedMs: number): {
+    attacker: Pose;
+    defender: Pose;
+    attackerAction: DuelistAction;
+    defenderAction: DuelistAction;
+  } {
+    if (elapsedMs < REACH_MS) {
+      return {
+        attacker: mixPose(STAND, REACH, ease(elapsedMs / REACH_MS)),
+        defender: mixPose(SIT, BRACE, ease(elapsedMs / Math.min(420, REACH_MS))),
+        attackerAction: 'reach',
+        defenderAction: 'brace',
+      };
+    }
+
+    let base: Pose = REACH;
+    let attackerAction: DuelistAction = 'hold';
+    if (this.cutsceneHighStakes) {
+      const holdSpan = Math.max(1, this.cutsceneDurationMs - REACH_MS);
+      const width = Math.min(1100, holdSpan * 0.3);
+      const center = REACH_MS + holdSpan * 0.5;
+      const weight = windowWeight(elapsedMs, center - width / 2, center + width / 2);
+      if (weight > 0.35) attackerAction = 'withdraw';
+      if (weight > 0) base = mixPose(REACH, HESITATE, weight);
+    }
+
+    const seconds = elapsedMs / 1000;
+    return {
+      attacker: addPoseOffsets(base, holdOffsets(seconds, 1)),
+      defender: addPoseOffsets(BRACE, braceOffsets(seconds, 1)),
+      attackerAction,
+      defenderAction: 'brace',
+    };
+  }
+
+  /** 押下の瞬間から始まる結果演技。攻撃側は必ず SLAM を挟む。 */
+  private resultPose(
+    elapsedMs: number,
+    hit: boolean,
+  ): {
+    attacker: Pose;
+    defender: Pose;
+    attackerAction: DuelistAction;
+    defenderAction: DuelistAction;
+  } {
+    const t = Math.min(1, elapsedMs / RESULT_MS);
+    const seconds = elapsedMs / 1000;
+
+    if (hit) {
+      const attacker: Pose =
+        t < 0.1
+          ? mixPose(REACH, SLAM, ease(t / 0.1))
+          : t < 0.28
+            ? SLAM
+            : t < 0.55
+              ? mixPose(SLAM, ATTACKER_RECOIL, ease((t - 0.28) / 0.27))
+              : ATTACKER_RECOIL;
+      const shocked = convulse(SHOCK, seconds);
+      const defender: Pose =
+        t < 0.12
+          ? mixPose(BRACE, SHOCK, ease(t / 0.12))
+          : t < 0.7
+            ? shocked
+            : mixPose(shocked, SIT, ease((t - 0.7) / 0.3));
+      return {
+        attacker,
+        defender,
+        attackerAction: t < 0.28 ? 'slam' : 'recoil',
+        defenderAction: 'shock',
+      };
+    }
+
+    const attacker: Pose =
+      t < 0.1
+        ? mixPose(REACH, SLAM, ease(t / 0.1))
+        : t < 0.26
+          ? SLAM
+          : t < 0.55
+            ? mixPose(SLAM, ATTACKER_RELIEF, ease((t - 0.26) / 0.29))
+            : ATTACKER_RELIEF;
+    const defender: Pose =
+      t < 0.18
+        ? mixPose(BRACE, RELIEF, ease(t / 0.18))
+        : t < 0.72
+          ? RELIEF
+          : mixPose(RELIEF, SIT, ease((t - 0.72) / 0.28));
+    return {
+      attacker,
+      defender,
+      attackerAction: t < 0.26 ? 'slam' : 'relief',
+      defenderAction: 'relief',
+    };
   }
 
   dispose(): void {

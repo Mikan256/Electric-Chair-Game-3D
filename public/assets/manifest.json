@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-24T14:37:09.642Z",
+  "generatedAt": "2026-11-25T13:11:47.690Z",
   "assets": {
     "models/chair-01.data": {
       "source": "Electric-Chair-Game/Assets/Object/Chair/Block1.fbx",
@@ -303,6 +303,12 @@
       "generated": true,
       "bytes": 17911,
       "sha256": "fe06ace15ce8fa9456b247d6edfdbc0957c4984da45bf39b7e8002d121f20b33"
+    },
+    "audio/voice/final-thunder.mp3": {
+      "source": "Piper TTS \"Final Thunder\" (en_US-joe-medium, CC0)",
+      "generated": true,
+      "bytes": 26062,
+      "sha256": "559a165ac9003656d946f5be3eb86964ed0be9a260d898307713e89b1c978a94"
     }
   }
 }

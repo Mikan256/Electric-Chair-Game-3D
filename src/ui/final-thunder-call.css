@@ -1,0 +1,646 @@
+/* FINAL THUNDER — プレス開始時に両者へ出す操作不要カットイン。
+   選択用の final-thunder.css とは独立。赤 / 金 / 黒、稲妻、斜めエッジの雰囲気だけ揃える。
+   全面 pointer-events: none。ゲームのボタン操作を奪わない。 */
+
+.ft-call,
+.ft-call * {
+  box-sizing: border-box;
+}
+
+.ft-call {
+  --ftc-red: var(--red, #ff2442);
+  --ftc-red-soft: var(--red-soft, #ff7588);
+  --ftc-gold: var(--gold, #ffd166);
+  --ftc-ink: #050308;
+
+  position: fixed;
+  inset: 0;
+  z-index: 1001;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: hidden;
+  padding: clamp(10px, 3vw, 32px);
+  padding-top: clamp(52px, 11vh, 96px);
+  color: var(--text, #f4edf0);
+  font-family:
+    var(--font-body, 'Hiragino Kaku Gothic ProN'), 'Hiragino Sans', 'Noto Sans JP', 'Yu Gothic',
+    Meiryo, sans-serif;
+  pointer-events: none;
+  isolation: isolate;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ft-call[hidden] {
+  display: none;
+}
+
+/* ------------------------------------------------------------------ frame */
+
+.ft-call__frame {
+  position: relative;
+  display: grid;
+  grid-template-areas:
+    'head target'
+    'sub target'
+    'last last';
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: clamp(14px, 3vw, 36px);
+  row-gap: clamp(4px, 1vh, 9px);
+  width: min(760px, 100%);
+  min-height: clamp(132px, 24vh, 180px);
+  padding: clamp(14px, 2.6vh, 24px) clamp(16px, 3.4vw, 36px) clamp(12px, 2vh, 18px);
+  overflow: hidden;
+  border-top: 1px solid rgba(255, 209, 102, 0.65);
+  border-bottom: 1px solid rgba(255, 36, 66, 0.8);
+  background:
+    linear-gradient(
+      104deg,
+      rgba(3, 3, 7, 0.97) 0%,
+      rgba(55, 5, 17, 0.95) 36%,
+      rgba(11, 4, 14, 0.96) 68%,
+      rgba(3, 3, 7, 0.98) 100%
+    ),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 9px);
+  box-shadow:
+    0 18px 54px rgba(0, 0, 0, 0.6),
+    inset 0 0 46px rgba(255, 36, 66, 0.13);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 56px) 100%, 0 100%);
+  transform: translateX(115%);
+  will-change: transform, opacity;
+}
+
+/* 左端の赤 / 金の斜めエッジ。 */
+.ft-call__frame::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: clamp(120px, 24vw, 290px);
+  background: linear-gradient(
+    100deg,
+    rgba(255, 36, 66, 0.55) 0%,
+    rgba(255, 209, 102, 0.2) 56%,
+    transparent 100%
+  );
+  clip-path: polygon(0 0, 100% 0, 66% 100%, 0 100%);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* 右端のリスクテープ。 */
+.ft-call__frame::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 10px;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 209, 102, 0.85) 0 5px,
+    rgba(255, 36, 66, 0.85) 5px 10px,
+    rgba(5, 3, 8, 0.9) 10px 15px
+  );
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* 下端のグリッチライン。 */
+.ft-call__glitch {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 4px),
+    linear-gradient(
+      90deg,
+      transparent 0 46%,
+      rgba(255, 36, 66, 0.32) 46% 46.6%,
+      transparent 46.6% 73%,
+      rgba(255, 209, 102, 0.24) 73% 73.4%,
+      transparent 73.4%
+    );
+  mix-blend-mode: screen;
+  opacity: 0.14;
+  pointer-events: none;
+  animation: ftc-glitch 4.6s steps(1, end) infinite;
+}
+
+/* ------------------------------------------------------------------- head */
+
+.ft-call__head {
+  grid-area: head;
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ft-call__kicker {
+  margin: 0 0 5px;
+  color: #ffd7de;
+  font-family:
+    var(--font-display, 'Zekton'), 'Arial Black', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP',
+    sans-serif;
+  font-size: clamp(8px, 1.2vh, 10px);
+  letter-spacing: 0.34em;
+  line-height: 1.2;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9);
+  text-transform: uppercase;
+}
+
+.ft-call__title {
+  margin: 0;
+  color: var(--ftc-gold);
+  font-family:
+    var(--font-display, 'Zekton'), 'Arial Black', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP',
+    sans-serif;
+  font-size: clamp(24px, 5.6vw, 46px);
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  line-height: 0.98;
+  white-space: nowrap;
+  text-shadow:
+    0 0 18px rgba(255, 209, 102, 0.5),
+    0 0 48px rgba(255, 36, 66, 0.35);
+}
+
+.ft-call__state {
+  align-self: flex-start;
+  margin: 7px 0 0;
+  padding: 2px 9px 2px 11px;
+  border-left: 3px solid var(--ftc-red);
+  background: linear-gradient(90deg, rgba(5, 3, 8, 0.82), rgba(5, 3, 8, 0.12));
+  color: #fff1f4;
+  font-family:
+    var(--font-display, 'Zekton'), 'Arial Black', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP',
+    sans-serif;
+  font-size: clamp(9px, 1.3vh, 11px);
+  letter-spacing: 0.24em;
+  line-height: 1.4;
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.9);
+  text-transform: uppercase;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 7px) 100%, 0 100%);
+}
+
+.ft-call--defender .ft-call__state {
+  border-left-color: var(--ftc-gold);
+  background: linear-gradient(90deg, rgba(5, 3, 8, 0.82), rgba(5, 3, 8, 0.12));
+  color: var(--ftc-gold);
+}
+
+/* ----------------------------------------------------------------- target */
+
+.ft-call__target {
+  grid-area: target;
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  align-self: stretch;
+  min-width: 0;
+  padding-left: clamp(10px, 2vw, 22px);
+  border-left: 1px solid rgba(255, 209, 102, 0.32);
+}
+
+.ft-call__who {
+  max-width: min(34vw, 230px);
+  margin: 0 0 2px;
+  overflow: hidden;
+  color: var(--muted, #9b94a6);
+  font-size: clamp(8px, 1.2vh, 10px);
+  letter-spacing: 0.2em;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ft-call__chair {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.ft-call__chair-label {
+  color: var(--ftc-red-soft);
+  font-family:
+    var(--font-display, 'Zekton'), 'Arial Black', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP',
+    sans-serif;
+  font-size: clamp(8px, 1.2vh, 10px);
+  letter-spacing: 0.3em;
+}
+
+.ft-call__chair-number {
+  color: var(--ftc-gold);
+  font-family:
+    var(--font-display, 'Zekton'), 'Arial Black', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP',
+    sans-serif;
+  font-size: clamp(36px, 6.5vw, 60px);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  line-height: 0.95;
+  text-shadow: 0 0 26px rgba(255, 209, 102, 0.45);
+}
+
+/* -------------------------------------------------------------------- sub */
+
+.ft-call__sub {
+  grid-area: sub;
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 12px;
+  margin: 0;
+  line-height: 1.3;
+  min-width: 0;
+}
+
+.ft-call__sub-main {
+  color: #f7eef2;
+  font-family:
+    var(--font-display, 'Zekton'), 'Arial Black', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP',
+    sans-serif;
+  font-size: clamp(12px, 1.8vh, 15px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.92);
+}
+
+.ft-call__sub-note {
+  color: #ffc2ce;
+  font-size: clamp(10px, 1.5vh, 12px);
+  letter-spacing: 0.14em;
+  text-shadow: 0 1px 7px rgba(0, 0, 0, 0.9);
+}
+
+.ft-call__sub-note[hidden] {
+  display: none;
+}
+
+/* ------------------------------------------------------------- last chance */
+
+.ft-call__last-chance {
+  grid-area: last;
+  position: relative;
+  z-index: 2;
+  justify-self: start;
+  margin: 2px 0 0;
+  padding: 3px 12px 3px 14px;
+  background: linear-gradient(90deg, var(--ftc-gold), #ffb347);
+  color: #180307;
+  font-family:
+    var(--font-display, 'Zekton'), 'Arial Black', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP',
+    sans-serif;
+  font-size: clamp(9px, 1.3vh, 11px);
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  line-height: 1.3;
+  text-transform: uppercase;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 9px) 100%, 0 100%);
+  box-shadow: 0 0 22px rgba(255, 209, 102, 0.3);
+}
+
+.ft-call__last-chance[hidden] {
+  display: none;
+}
+
+/* --------------------------------------------------------------- high stakes */
+
+.ft-call--high-stakes .ft-call__frame {
+  border-top-color: rgba(255, 209, 102, 0.9);
+  border-bottom-color: var(--ftc-red);
+  background:
+    linear-gradient(
+      104deg,
+      rgba(9, 2, 4, 0.98) 0%,
+      rgba(104, 6, 24, 0.95) 34%,
+      rgba(26, 3, 10, 0.96) 68%,
+      rgba(5, 2, 6, 0.99) 100%
+    ),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 9px);
+  box-shadow:
+    0 20px 64px rgba(0, 0, 0, 0.66),
+    0 0 44px rgba(255, 36, 66, 0.26),
+    inset 0 0 58px rgba(255, 36, 66, 0.24);
+}
+
+.ft-call--high-stakes .ft-call__title {
+  color: #fff2c4;
+  text-shadow:
+    0 0 20px rgba(255, 209, 102, 0.75),
+    0 0 60px rgba(255, 36, 66, 0.65);
+  animation: ftc-pulse 1.5s ease-in-out infinite;
+}
+
+.ft-call--high-stakes .ft-call__bolt {
+  opacity: 0.85;
+}
+
+.ft-call--defender.ft-call--high-stakes .ft-call__title {
+  color: var(--ftc-gold);
+}
+
+/* ------------------------------------------------------------------- bolts */
+
+.ft-call__bolt {
+  position: absolute;
+  top: -10%;
+  z-index: 1;
+  width: clamp(40px, 8vw, 110px);
+  height: 120%;
+  background: linear-gradient(
+    180deg,
+    #fff 0%,
+    var(--ftc-gold) 30%,
+    var(--ftc-red) 64%,
+    rgba(255, 36, 66, 0) 100%
+  );
+  clip-path: polygon(52% 0, 72% 0, 60% 29%, 86% 25%, 46% 76%, 58% 46%, 34% 52%, 47% 22%, 26% 27%);
+  filter: drop-shadow(0 0 10px rgba(255, 36, 66, 0.55));
+  opacity: 0.5;
+  pointer-events: none;
+  animation: ftc-flicker 3.2s steps(1, end) infinite;
+}
+
+.ft-call__bolt--lead {
+  right: 18%;
+}
+
+.ft-call__bolt--trail {
+  left: 2%;
+  transform: scaleX(-1);
+  opacity: 0.2;
+  animation-delay: 1.1s;
+}
+
+/* -------------------------------------------------------------- animations */
+
+.ft-call.is-open .ft-call__frame {
+  animation: ftc-in 0.46s cubic-bezier(0.16, 0.84, 0.3, 1) both;
+}
+
+.ft-call.is-leaving .ft-call__frame {
+  animation: ftc-out 0.28s cubic-bezier(0.5, 0, 0.75, 0) both;
+}
+
+@keyframes ftc-in {
+  from {
+    opacity: 0.2;
+    transform: translateX(115%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes ftc-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-115%);
+  }
+}
+
+@keyframes ftc-flicker {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  8% {
+    opacity: 0.16;
+  }
+  10% {
+    opacity: 0.66;
+  }
+  12% {
+    opacity: 0.24;
+  }
+  14% {
+    opacity: 0.54;
+  }
+  48% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.7;
+  }
+  52% {
+    opacity: 0.28;
+  }
+}
+
+@keyframes ftc-glitch {
+  0%,
+  91%,
+  100% {
+    opacity: 0.14;
+    transform: translateX(0);
+  }
+  92% {
+    opacity: 0.34;
+    transform: translateX(-4px);
+  }
+  93% {
+    opacity: 0.1;
+    transform: translateX(3px);
+  }
+  94% {
+    opacity: 0.28;
+    transform: translateX(-2px);
+  }
+  95% {
+    opacity: 0.16;
+    transform: translateX(0);
+  }
+}
+
+@keyframes ftc-pulse {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.16);
+  }
+}
+
+/* ------------------------------------------------------------------ mobile */
+
+@media (max-width: 420px) {
+  .ft-call {
+    padding: 8px;
+  }
+
+  .ft-call__frame {
+    column-gap: 8px;
+    row-gap: 4px;
+    padding: 12px 12px 10px;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 34px) 100%, 0 100%);
+  }
+
+  .ft-call__kicker {
+    margin-bottom: 3px;
+    font-size: 7px;
+    letter-spacing: 0.24em;
+  }
+
+  .ft-call__title {
+    font-size: clamp(21px, 6.8vw, 28px);
+  }
+
+  .ft-call__state {
+    margin-top: 5px;
+    padding: 1px 7px 1px 8px;
+    font-size: 8px;
+    letter-spacing: 0.16em;
+  }
+
+  .ft-call__target {
+    padding-left: 8px;
+  }
+
+  .ft-call__who {
+    max-width: 28vw;
+    font-size: 7px;
+    letter-spacing: 0.12em;
+  }
+
+  .ft-call__chair {
+    gap: 4px;
+  }
+
+  .ft-call__chair-label {
+    font-size: 7px;
+    letter-spacing: 0.18em;
+  }
+
+  .ft-call__chair-number {
+    font-size: 32px;
+  }
+
+  .ft-call__sub {
+    gap: 2px 8px;
+  }
+
+  .ft-call__sub-main {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+  }
+
+  .ft-call__sub-note {
+    font-size: 9px;
+    letter-spacing: 0.08em;
+  }
+
+  .ft-call__last-chance {
+    padding: 2px 9px 2px 10px;
+    font-size: 8px;
+    letter-spacing: 0.12em;
+  }
+
+  .ft-call__bolt--lead {
+    right: 24%;
+  }
+}
+
+/* Flaxia の小さいプレイヤー（600×400 など）向け。 */
+@media (max-height: 560px) {
+  .ft-call {
+    padding: 8px 12px;
+  }
+
+  .ft-call__frame {
+    min-height: 100px;
+    padding: 10px clamp(14px, 3vw, 26px) 9px;
+  }
+
+  .ft-call__kicker {
+    margin-bottom: 2px;
+    font-size: 7px;
+  }
+
+  .ft-call__title {
+    font-size: clamp(22px, 4.4vw, 34px);
+  }
+
+  .ft-call__state {
+    margin-top: 4px;
+    font-size: 8px;
+  }
+
+  .ft-call__who {
+    font-size: 8px;
+  }
+
+  .ft-call__chair-number {
+    font-size: clamp(30px, 5vw, 42px);
+  }
+
+  .ft-call__sub-main {
+    font-size: 11px;
+  }
+
+  .ft-call__sub-note {
+    font-size: 9px;
+  }
+
+  .ft-call__last-chance {
+    margin-top: 0;
+    font-size: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ft-call.is-open .ft-call__frame {
+    animation: ftc-fade-in 0.14s ease-out both;
+  }
+
+  .ft-call.is-leaving .ft-call__frame {
+    animation: ftc-fade-out 0.12s ease-in both;
+  }
+
+  .ft-call__bolt,
+  .ft-call__glitch,
+  .ft-call--high-stakes .ft-call__title {
+    animation: none;
+  }
+}
+
+@keyframes ftc-fade-in {
+  from {
+    opacity: 0;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes ftc-fade-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(0);
+  }
+}

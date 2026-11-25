@@ -59,7 +59,7 @@ test.describe('final thunder', () => {
 
     // Keep this seat: the CPU (attacker) presses and the turn resolves.
     await page.locator('[data-choice="keep"]').click();
-    await expect(page.locator('#result-overlay')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('#result-overlay')).toBeVisible({ timeout: 20_000 });
 
     expect(errors).toEqual([]);
   });

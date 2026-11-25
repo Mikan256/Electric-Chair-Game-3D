@@ -31,6 +31,7 @@ export const ASSETS = {
   seElectric: 'audio/se/electric.mp3',
   seChair: 'audio/se/chair.mp3',
   seClick: 'audio/se/click.mp3',
+  voiceFinalThunder: 'audio/voice/final-thunder.mp3',
 } as const;
 
 /** ラウンドコール音声（Piper TTS で生成、最大ターン数ぶん）。 */

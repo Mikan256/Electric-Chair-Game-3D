@@ -1,22 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG } from '@/game/types';
-import type { MatchView, MatchViewPlayer, PlayerIndex, TurnResult } from '@/game/types';
-import { buildMonitorRows } from '@/scene/match-monitor';
+import type { MatchView, MatchViewPlayer, TurnResult } from '@/game/types';
+import { monitorChairLabel, monitorHeadline, monitorPhaseLabel } from '@/scene/match-monitor';
 
 function player(name: string, points = 0, shocksDealt = 0): MatchViewPlayer {
   return { id: name.toLowerCase(), name, points, shocksDealt };
 }
 
-function defaultPlayers(): readonly [MatchViewPlayer, MatchViewPlayer] {
-  return [player('Alice'), player('Bob')];
-}
-
 function turnResult(overrides: Partial<TurnResult> & Pick<TurnResult, 'turn'>): TurnResult {
-  const attacker: PlayerIndex = overrides.attacker ?? 0;
-  const defender: PlayerIndex = attacker === 0 ? 1 : 0;
   return {
-    attacker,
-    defender,
+    attacker: 0,
+    defender: 1,
     wiredChair: 9,
     sittingChair: 4,
     hit: false,
@@ -33,7 +27,7 @@ function makeView(overrides: Partial<MatchView> = {}): MatchView {
   return {
     matchId: 'match-1',
     config: DEFAULT_CONFIG,
-    players: defaultPlayers(),
+    players: [player('Alice'), player('Bob')],
     phase: 'set',
     turn: 1,
     attacker: 0,
@@ -50,199 +44,88 @@ function makeView(overrides: Partial<MatchView> = {}): MatchView {
   };
 }
 
-describe('buildMonitorRows', () => {
-  it('history 2件 + 現在ターンで3行になる', () => {
-    const view = makeView({
-      phase: 'set',
-      turn: 3,
-      history: [
-        turnResult({ turn: 1, pointsAfter: [4, 0] }),
-        turnResult({ turn: 2, attacker: 1, pointsAfter: [4, 5] }),
-      ],
-    });
-
-    const rows = buildMonitorRows(view);
-
-    expect(rows).toHaveLength(3);
-    expect(rows.map((row) => row.current)).toEqual([false, false, true]);
-    expect(rows.at(-1)?.turn).toBe(3);
+describe('monitorHeadline', () => {
+  it('待機・仕掛け・着席はロゴ見出し', () => {
+    expect(monitorHeadline(makeView({ phase: 'set' }))).toBe('MATCH LOG');
+    expect(monitorHeadline(makeView({ phase: 'sit', sittingChair: 5 }))).toBe('MATCH LOG');
   });
 
-  it('history 行は wiredChair / result / pointsAfter が正しい', () => {
-    const view = makeView({
+  it('press は FINAL THUNDER（仕掛け椅子が分かっても変えない）', () => {
+    const view = makeView({ phase: 'press', turn: 3, sittingChair: 6 });
+    expect(monitorHeadline(view)).toBe('FINAL THUNDER');
+  });
+
+  it('result は lastResult に応じて SHOCK / SAFE', () => {
+    const shock = makeView({
       phase: 'result',
       turn: 2,
-      history: [
-        turnResult({
-          turn: 1,
-          attacker: 0,
-          sittingChair: 5,
-          wiredChair: 9,
-          hit: true,
-          pointsLost: 12,
-          pointsAfter: [0, 0],
-        }),
-        turnResult({
-          turn: 2,
-          attacker: 1,
-          sittingChair: 7,
-          wiredChair: 3,
-          hit: false,
-          pointsAwarded: 7,
-          retiredChair: 7,
-          pointsAfter: [5, 7],
-        }),
-      ],
+      lastResult: turnResult({ turn: 2, hit: true }),
     });
-
-    const rows = buildMonitorRows(view);
-
-    expect(rows[0]).toMatchObject({
-      turn: 1,
-      attacker: 'Alice',
-      sittingChair: 5,
-      wiredChair: 9,
-      result: 'SHOCK',
-      points: [0, 0],
-      current: false,
-    });
-    expect(rows[1]).toMatchObject({
-      turn: 2,
-      attacker: 'Bob',
-      sittingChair: 7,
-      wiredChair: 3,
-      result: 'SAFE',
-      points: [5, 7],
-      current: false,
-    });
-  });
-
-  it('result フェーズでは確定済みの行を二重に追加しない', () => {
-    const view = makeView({
+    const safe = makeView({
       phase: 'result',
       turn: 2,
-      history: [
-        turnResult({ turn: 1, pointsAfter: [4, 0] }),
-        turnResult({ turn: 2, attacker: 1, hit: true, pointsAfter: [4, 0] }),
-      ],
+      lastResult: turnResult({ turn: 2, hit: false }),
     });
 
-    const rows = buildMonitorRows(view);
-
-    expect(rows).toHaveLength(2);
-    expect(rows.map((row) => row.turn)).toEqual([1, 2]);
-    expect(rows.every((row) => !row.current)).toBe(true);
+    expect(monitorHeadline(shock)).toBe('SHOCK');
+    expect(monitorHeadline(safe)).toBe('SAFE');
   });
 
-  it('現在行は wiredChair が null、result が —、sittingChair は公開値のみ', () => {
-    const view = makeView({
-      phase: 'press',
-      turn: 2,
-      attacker: 1,
-      sittingChair: 6,
-      players: [player('Alice', 12, 1), player('Bob', 9, 0)],
-      history: [
-        turnResult({
-          turn: 1,
-          attacker: 0,
-          sittingChair: 6,
-          wiredChair: 11,
-          hit: false,
-          pointsAfter: [12, 0],
+  it('result でも lastResult が無ければ RESULT', () => {
+    expect(monitorHeadline(makeView({ phase: 'result', lastResult: null }))).toBe('RESULT');
+  });
+
+  it('finished は FINISHED', () => {
+    expect(
+      monitorHeadline(
+        makeView({
+          phase: 'finished',
+          outcome: { kind: 'win', winner: 0, reason: 'points' },
         }),
-      ],
-    });
+      ),
+    ).toBe('FINISHED');
+  });
+});
 
-    const current = buildMonitorRows(view).at(-1);
+describe('monitorPhaseLabel', () => {
+  it('全フェーズの英日ラベルを返す', () => {
+    expect(monitorPhaseLabel(makeView({ phase: 'set' }))).toBe('SET / 仕掛け中');
+    expect(monitorPhaseLabel(makeView({ phase: 'sit' }))).toBe('SIT / 着席待ち');
+    expect(monitorPhaseLabel(makeView({ phase: 'press' }))).toBe('PRESS / ボタン待ち');
+    expect(monitorPhaseLabel(makeView({ phase: 'result' }))).toBe('RESULT / 判定');
+    expect(monitorPhaseLabel(makeView({ phase: 'finished' }))).toBe('FINISHED / 終了');
+  });
+});
 
-    expect(current).toMatchObject({
-      turn: 2,
-      attacker: 'Bob',
-      sittingChair: 6,
-      wiredChair: null,
-      result: '—',
-      points: [12, 9],
-      current: true,
-    });
+describe('monitorChairLabel', () => {
+  it('press 中は着席済みでも CHAIR ?? のまま', () => {
+    const view = makeView({ phase: 'press', turn: 2, sittingChair: 6 });
+    expect(monitorChairLabel(view)).toBe('CHAIR ??');
   });
 
-  it('着席前の現在行も sittingChair を null のままにする', () => {
-    const view = makeView({
-      phase: 'set',
-      turn: 1,
-      attacker: 0,
-      sittingChair: null,
-    });
-
-    const current = buildMonitorRows(view).at(-1);
-
-    expect(current).toMatchObject({
-      sittingChair: null,
-      wiredChair: null,
-      result: '—',
-      current: true,
-    });
+  it('着席前は null、着席後は公開済みの sittingChair を出す', () => {
+    expect(monitorChairLabel(makeView({ phase: 'set', sittingChair: null }))).toBeNull();
+    expect(monitorChairLabel(makeView({ phase: 'set', sittingChair: 3 }))).toBe('CHAIR #3');
+    expect(monitorChairLabel(makeView({ phase: 'sit', sittingChair: 7 }))).toBe('CHAIR #7');
   });
 
-  it('finished のときは現在行を追加しない', () => {
+  it('result / finished は lastResult.sittingChair を使う', () => {
     const view = makeView({
+      phase: 'result',
+      sittingChair: 2,
+      lastResult: turnResult({ turn: 4, sittingChair: 8, wiredChair: 11 }),
+    });
+    expect(monitorChairLabel(view)).toBe('CHAIR #8');
+
+    const finished = makeView({
       phase: 'finished',
-      turn: 2,
-      history: [turnResult({ turn: 1 }), turnResult({ turn: 2, attacker: 1 })],
-      lastResult: turnResult({ turn: 2, attacker: 1 }),
-      outcome: { kind: 'win', winner: 1, reason: 'points' },
+      lastResult: turnResult({ turn: 8, sittingChair: 5 }),
+      outcome: { kind: 'win', winner: 1, reason: 'shocks' },
     });
-
-    const rows = buildMonitorRows(view);
-
-    expect(rows).toHaveLength(2);
-    expect(rows.every((row) => !row.current)).toBe(true);
-    expect(rows.at(-1)?.turn).toBe(2);
+    expect(monitorChairLabel(finished)).toBe('CHAIR #5');
   });
 
-  it('5行上限で最新行を残す', () => {
-    const history = Array.from({ length: 10 }, (_, index) =>
-      turnResult({ turn: index + 1, pointsAfter: [index, 0] }),
-    );
-    const view = makeView({ phase: 'set', turn: 11, history });
-
-    const rows = buildMonitorRows(view);
-
-    expect(rows).toHaveLength(5);
-    expect(rows[0]?.turn).toBe(7);
-    expect(rows.at(-1)).toMatchObject({ turn: 11, current: true });
-  });
-
-  it('history 8件 + 現在行でも最大5行（現在行を含む）', () => {
-    const history = Array.from({ length: 8 }, (_, index) =>
-      turnResult({ turn: index + 1, pointsAfter: [index, 0] }),
-    );
-    const view = makeView({ phase: 'sit', turn: 9, history, sittingChair: 3 });
-
-    const rows = buildMonitorRows(view);
-
-    expect(rows).toHaveLength(5);
-    expect(rows[0]?.turn).toBe(5);
-    expect(rows.at(-1)).toMatchObject({ turn: 9, sittingChair: 3, current: true });
-  });
-
-  it('プレイヤー名と points が現在の players から入る', () => {
-    const view = makeView({
-      phase: 'set',
-      turn: 5,
-      attacker: 1,
-      players: [player('Alice', 21, 2), player('Bob', 34, 1)],
-      history: [turnResult({ turn: 4, attacker: 0, pointsAfter: [21, 34] })],
-    });
-
-    const rows = buildMonitorRows(view);
-
-    expect(rows[0]?.attacker).toBe('Alice');
-    expect(rows[0]?.points).toEqual([21, 34]);
-    expect(rows.at(-1)).toMatchObject({
-      attacker: 'Bob',
-      points: [21, 34],
-      current: true,
-    });
+  it('result で lastResult が無ければ椅子を出さない', () => {
+    expect(monitorChairLabel(makeView({ phase: 'result', lastResult: null }))).toBeNull();
   });
 });

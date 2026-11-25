@@ -4,6 +4,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { finalThunderTiming } from '@/game/timing';
 import type { MatchView } from '@/game/types';
 import { AssetLibrary, type LoadProgress } from './assets';
 import { AudioManager } from './audio';
@@ -12,7 +13,7 @@ import { ChairActor, chairLayout, STAGE_RADIUS } from './chair';
 import { CinematicCamera } from './cinematic-camera';
 import { DuelistSet } from './duelists';
 import { Effects } from './effects';
-import { MatchMonitor, type MonitorRow } from './match-monitor';
+import { MatchMonitor } from './match-monitor';
 import { RoomOrbitCamera, type RoomOrbitConfig } from './orbit-camera';
 
 export interface TheaterCallbacks {
@@ -128,6 +129,10 @@ export class Theater {
   private readonly monitor: MatchMonitor;
   private readonly duelists: DuelistSet;
   private readonly cinematic: CinematicCamera;
+  private readonly warningLight: THREE.PointLight;
+  private readonly pulseRing: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
+  private finalThunderStartedAt = 0;
+  private finalThunderDuration = 0;
   private readonly composer: EffectComposer;
   private readonly bloom: UnrealBloomPass;
   private readonly effects: Effects;
@@ -196,6 +201,25 @@ export class Theater {
       controls: this.orbit.controls,
       bounds: CAMERA_BOUNDS,
     });
+
+    this.warningLight = new THREE.PointLight(0xff2442, 0, 24, 2);
+    this.warningLight.position.set(0, 6.4, -7.5);
+    this.scene.add(this.warningLight);
+    this.pulseRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.9, 1.02, 64),
+      new THREE.MeshBasicMaterial({
+        color: 0xff4d5a,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        toneMapped: false,
+      }),
+    );
+    this.pulseRing.rotation.x = -Math.PI / 2;
+    this.pulseRing.position.set(0, 0.045, PEDESTAL_Z);
+    this.pulseRing.visible = false;
+    this.scene.add(this.pulseRing);
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
@@ -598,12 +622,20 @@ export class Theater {
     this.monitor.update(view);
     this.duelists.setView(view);
     if (view.phase === 'press' && this.lastDuelistPhase !== 'press') {
-      this.duelists.playFinalThunder();
+      const timing = finalThunderTiming(view);
+      this.duelists.playFinalThunder(timing.prePressMs);
       this.effects.floatText(new THREE.Vector3(0, 0.2, 7.0), 'FINAL THUNDER', '#ffd166', 0.45);
-      this.cinematic.pressShot(
-        new THREE.Vector3(0, PLATFORM.height, PEDESTAL_Z),
-        new THREE.Vector3(1.35, PLATFORM.height, 9.35),
-      );
+      const chairPosition =
+        view.sittingChair !== null
+          ? chairLayout(view.sittingChair)
+          : { x: 0, z: 6.1 };
+      this.cinematic.finalThunderSequence({
+        pedestal: new THREE.Vector3(0, PLATFORM.height, PEDESTAL_Z),
+        avatar: new THREE.Vector3(1.35, PLATFORM.height, 9.35),
+        chair: new THREE.Vector3(chairPosition.x, 0, chairPosition.z),
+        durationMs: timing.prePressMs,
+      });
+      this.startFinalThunderFx(timing.prePressMs);
     }
     if (view.phase === 'result' && view.lastResult && this.lastDuelistPhase !== 'result') {
       this.duelists.playResult(view.lastResult.hit);
@@ -617,6 +649,10 @@ export class Theater {
     }
     if (view.phase === 'finished' && this.lastDuelistPhase !== 'finished') {
       this.cinematic.restore();
+      this.stopFinalThunderFx();
+    }
+    if (view.phase === 'result' && this.lastDuelistPhase !== 'result') {
+      this.stopFinalThunderFx();
     }
     this.lastDuelistPhase = view.phase;
     this.setFloorNumberState(view);
@@ -694,6 +730,7 @@ export class Theater {
     this.monitor.update(null);
     this.duelists.reset();
     this.cinematic.reset();
+    this.stopFinalThunderFx();
     this.lastDuelistPhase = null;
     for (const chair of this.chairs.values()) {
       chair.reset();
@@ -703,6 +740,35 @@ export class Theater {
       mesh.material.opacity = 0.92;
       mesh.material.color.setHex(0xffffff);
     }
+  }
+
+  // ---------------------------------------------------------------- final thunder fx
+
+  private startFinalThunderFx(durationMs: number): void {
+    this.finalThunderStartedAt = performance.now();
+    this.finalThunderDuration = Math.max(1, durationMs);
+    this.pulseRing.visible = true;
+    this.warningLight.intensity = 8;
+  }
+
+  private stopFinalThunderFx(): void {
+    this.finalThunderStartedAt = 0;
+    this.finalThunderDuration = 0;
+    this.warningLight.intensity = 0;
+    this.pulseRing.visible = false;
+    this.pulseRing.material.opacity = 0;
+  }
+
+  private updateFinalThunderFx(now: number): void {
+    if (this.finalThunderStartedAt <= 0) return;
+    const elapsed = now - this.finalThunderStartedAt;
+    const progress = Math.min(1, elapsed / this.finalThunderDuration);
+    const flicker = 0.65 + Math.sin(elapsed * 0.013) * 0.25 + Math.sin(elapsed * 0.031) * 0.1;
+    this.warningLight.intensity = 18 * flicker * (1 - progress * 0.35);
+    const pulse = (elapsed % 1000) / 1000;
+    this.pulseRing.scale.setScalar(1 + pulse * 5.2);
+    this.pulseRing.material.opacity = 0.55 * (1 - pulse) * (1 - progress * 0.4);
+    if (elapsed >= this.finalThunderDuration + 120) this.stopFinalThunderFx();
   }
 
   // ---------------------------------------------------------------- internal
@@ -815,6 +881,7 @@ export class Theater {
     if (!this.cinematic.active) this.orbit.update();
     this.updateHover();
     this.duelists.update(dt);
+    this.updateFinalThunderFx(now);
     this.effects.update(dt);
     for (const chair of this.chairs.values()) chair.update(dt, elapsed);
     if (this.pressButtonMesh) {
@@ -844,11 +911,6 @@ export class Theater {
   /** E2E/デバッグ用: 現在のカメラ方位角（ラジアン）。 */
   get cameraAzimuth(): number {
     return this.orbit.azimuth;
-  }
-
-  /** E2E/デバッグ用: 直近にモニターへ描画した行。 */
-  get monitorRows(): readonly MonitorRow[] {
-    return this.monitor.rows;
   }
 
   /** 守備側の着席プレビュー（ファイナルサンダー中）。 */

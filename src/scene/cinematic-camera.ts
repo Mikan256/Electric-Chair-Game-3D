@@ -8,6 +8,22 @@ export interface CameraShot {
   readonly fov?: number;
 }
 
+/** タイムラインを構成する 1 ステップ。 */
+export interface CinematicStep {
+  readonly shot: CameraShot;
+  /** このショットを表示する時間（次のショットへの移動時間を含む） */
+  readonly durationMs: number;
+}
+
+/** FINAL THUNDER のプレス前タイムラインを組み立てるための入力。 */
+export interface FinalThunderSequenceOptions {
+  readonly pedestal: THREE.Vector3;
+  readonly avatar: THREE.Vector3;
+  readonly chair: THREE.Vector3;
+  /** src/game/timing.ts の 3200 / 5200 を想定 */
+  readonly durationMs: number;
+}
+
 /** 演出カメラの可動域（部屋の内側）。 */
 export interface CinematicBounds {
   readonly minX: number;
@@ -32,13 +48,34 @@ export const DEFAULT_CINEMATIC_BOUNDS: CinematicBounds = {
 };
 
 const PRESS_FOV = 46;
-const SHOCK_FOV = 42;
+const SEATED_FOV = 42;
+const BUTTON_FOV = 32;
 const PRESS_TRANSITION_MS = 450;
 const SHOCK_TRANSITION_MS = 220;
 const RESTORE_TRANSITION_MS = 500;
+/** タイムライン内で次のショットへ移動する時間（250〜350ms）。 */
+const SEQUENCE_TRANSITION_MS = 300;
 /** 壁際のショットを作らないための余白。 */
 const BOUNDS_MARGIN = 0.4;
 const EPSILON = 1e-6;
+
+/** 台座のボタン上面の高さ（stage.ts の buildPedestal と揃える）。 */
+const BUTTON_LOCAL_Y = 1.06;
+/** ボタンアップのカメラ位置（台座基準）。 */
+const BUTTON_CAMERA_LOCAL_Y = 1.4;
+const BUTTON_CAMERA_LOCAL_Z = 2.2;
+
+/**
+ * 標準尺（3200ms）の配分。0〜700 プレス、700〜1500 守備側、
+ * 1500〜2400 ボタン、2400〜3200 プレスホールド。
+ */
+const FINAL_THUNDER_LEAD_MS = 700;
+const FINAL_THUNDER_DEFENDER_STANDARD_MS = 800;
+const FINAL_THUNDER_BUTTON_STANDARD_MS = 900;
+/** 高stakes（5200ms）では 2/3 を長く取り、最後のプレスを大きく伸ばす。 */
+const FINAL_THUNDER_LONG_FORM_MS = 5200;
+const FINAL_THUNDER_DEFENDER_LONG_MS = 1200;
+const FINAL_THUNDER_BUTTON_LONG_MS = 1200;
 
 function finiteOr(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
@@ -90,13 +127,13 @@ export function pressShotFor(pedestal: THREE.Vector3, avatar: THREE.Vector3): Ca
 }
 
 /**
- * 感電時のアップショット。
+ * 椅子に座っているアバターのアップショット。
  *
- * 椅子から円の内側へ 1.6、横方向へ 1.2 寄った位置から、
- * 座っているアバターの胸元（椅子 + 1.1）を見上げる。
+ * 椅子から円の内側へ 2.0、横方向へ 1.25 寄った位置から、
+ * 座っているアバターの胸元（椅子 + 1.2）を見る。
  * 椅子は半径 6.1 にあるため、カメラは必ず円の内側に収まる。
  */
-export function shockShotFor(chair: THREE.Vector3): CameraShot {
+function seatedShotFor(chair: THREE.Vector3, fov: number): CameraShot {
   const x = finiteOrZero(chair.x);
   const y = finiteOrZero(chair.y);
   const z = finiteOrZero(chair.z);
@@ -115,7 +152,35 @@ export function shockShotFor(chair: THREE.Vector3): CameraShot {
       z + inward.z * 2.0 + side.z * 1.25,
     ),
     target: new THREE.Vector3(x, y + 1.2, z),
-    fov: SHOCK_FOV,
+    fov,
+  };
+}
+
+/** 守備側が座っている姿のアップ（感電前の「誰が座ったか」を見せる）。 */
+export function defenderShotFor(chair: THREE.Vector3): CameraShot {
+  return seatedShotFor(chair, SEATED_FOV);
+}
+
+/** 感電時のアップショット。構図は defenderShotFor と同じ。 */
+export function shockShotFor(chair: THREE.Vector3): CameraShot {
+  return seatedShotFor(chair, SEATED_FOV);
+}
+
+/**
+ * 台座のボタン（攻撃側の手元）へ寄るショット。
+ *
+ * 台座の手前 +Z 側 2.2、ボタンより少し上から、ボタンそのものを見下ろす。
+ * 部屋の手前方向（内側）へ下がるため、壁の外へは出ない。
+ */
+export function buttonShotFor(pedestal: THREE.Vector3): CameraShot {
+  const x = finiteOrZero(pedestal.x);
+  const y = finiteOrZero(pedestal.y);
+  const z = finiteOrZero(pedestal.z);
+
+  return {
+    position: new THREE.Vector3(x, y + BUTTON_CAMERA_LOCAL_Y, z + BUTTON_CAMERA_LOCAL_Z),
+    target: new THREE.Vector3(x, y + BUTTON_LOCAL_Y, z),
+    fov: BUTTON_FOV,
   };
 }
 
@@ -159,10 +224,81 @@ function clampShotPosition(position: THREE.Vector3, bounds: CinematicBounds): TH
   );
 }
 
+/**
+ * FINAL THUNDER の時間配分。
+ *
+ * 通常尺では「プレス → 守備側 → ボタン → プレスホールド」を
+ * 700 / 800 / 900 / 残り に分ける。高stakes では守備側とボタンを
+ * 1200 ずつに伸ばし、残りを最後のプレスホールドへ回す。
+ * 合計は必ず durationMs と一致する。
+ */
+function finalThunderDurations(durationMs: number): [number, number, number, number] {
+  const total = Math.max(0, finiteOr(durationMs, 0));
+  const long = total >= FINAL_THUNDER_LONG_FORM_MS;
+  const lead = FINAL_THUNDER_LEAD_MS;
+  const defender = long ? FINAL_THUNDER_DEFENDER_LONG_MS : FINAL_THUNDER_DEFENDER_STANDARD_MS;
+  const button = long ? FINAL_THUNDER_BUTTON_LONG_MS : FINAL_THUNDER_BUTTON_STANDARD_MS;
+  const baseSum = lead + defender + button;
+
+  if (total >= baseSum) {
+    return [lead, defender, button, total - baseSum];
+  }
+
+  // 極端に短い duration でも比率を保ち、最後のホールドへ残りを寄せる。
+  const scale = total / baseSum;
+  const scaledLead = Math.floor(lead * scale);
+  const scaledDefender = Math.floor(defender * scale);
+  const scaledButton = Math.floor(button * scale);
+  return [
+    scaledLead,
+    scaledDefender,
+    scaledButton,
+    total - scaledLead - scaledDefender - scaledButton,
+  ];
+}
+
+/**
+ * FINAL THUNDER のプレス前演出を 4 ショットのタイムラインへ組み立てる。
+ *
+ * 1. 台座＋攻撃側の斜め後ろから椅子（プレス）
+ * 2. 座っている守備側のアップ
+ * 3. 台座のボタン／手元アップ
+ * 4. プレスショットへ戻してホールド（攻撃側が押せる瞬間）
+ */
+export function finalThunderStepsFor(options: FinalThunderSequenceOptions): CinematicStep[] {
+  const durations = finalThunderDurations(options.durationMs);
+  return [
+    { shot: pressShotFor(options.pedestal, options.avatar), durationMs: durations[0] },
+    { shot: defenderShotFor(options.chair), durationMs: durations[1] },
+    { shot: buttonShotFor(options.pedestal), durationMs: durations[2] },
+    { shot: pressShotFor(options.pedestal, options.avatar), durationMs: durations[3] },
+  ];
+}
+
 interface SavedView {
   readonly position: THREE.Vector3;
   readonly target: THREE.Vector3;
   readonly fov: number;
+}
+
+interface ResolvedShot {
+  readonly position: THREE.Vector3;
+  readonly target: THREE.Vector3;
+  readonly fov: number;
+}
+
+interface SequenceStep {
+  readonly shot: ResolvedShot;
+  readonly startMs: number;
+  readonly durationMs: number;
+}
+
+interface SequenceState {
+  readonly steps: readonly SequenceStep[];
+  readonly totalMs: number;
+  /** シーケンス開始前のカメラ位置（最初のショットの補間元）。 */
+  readonly from: ResolvedShot;
+  startedAt: number | null;
 }
 
 type TweenMode = 'shot' | 'restore';
@@ -182,11 +318,12 @@ interface Tween {
 /**
  * 360° オービットカメラに一時的に被せる演出カメラ。
  *
- * `pressShot` / `shockShot` でショットへ移動し、`restore` で最初のショット前に
- * 保存したユーザー視点へ戻す。演出中は `controls.enabled = false` にして
+ * 単発の `pressShot` / `shockShot` と、複数ショットの `playSequence` /
+ * `finalThunderSequence` を持つ。`restore` で最初のショット前に保存した
+ * ユーザー視点へ戻す。演出中は `controls.enabled = false` にして
  * ユーザー操作と競合しないようにする。
  *
- * トゥイーンの開始時刻は最初の `update(now)` 呼び出しで確定する。
+ * タイムラインの開始時刻は最初の `update(now)` 呼び出しで確定する。
  * そのため呼び出し側は `performance.now()` をそのまま渡せばよい。
  */
 export class CinematicCamera {
@@ -195,6 +332,7 @@ export class CinematicCamera {
   private readonly bounds: CinematicBounds;
 
   private tween: Tween | null = null;
+  private sequence: SequenceState | null = null;
   private saved: SavedView | null = null;
   private activeValue = false;
 
@@ -208,14 +346,57 @@ export class CinematicCamera {
     return this.activeValue;
   }
 
-  /** 台座と攻撃側アバターの斜め後ろから椅子を見るショット。 */
+  /** 台座と攻撃側アバターの斜め後ろから椅子を見る単発ショット。 */
   pressShot(pedestal: THREE.Vector3, avatar: THREE.Vector3): void {
     this.beginShot(pressShotFor(pedestal, avatar), PRESS_TRANSITION_MS);
   }
 
-  /** 感電した椅子のアップショット。 */
+  /** 感電した椅子のアップショット。シーケンス中でも割り込める。 */
   shockShot(chair: THREE.Vector3): void {
     this.beginShot(shockShotFor(chair), SHOCK_TRANSITION_MS);
+  }
+
+  /**
+   * 複数ショットのタイムラインを開始する。
+   *
+   * 最初のステップは現在のカメラ位置からその duration をかけて移動し、
+   * 以降は 300ms（ステップが短ければその全長）で前のショットから移動する。
+   * タイムライン終了後は最後のショットをホールドしたまま active を維持する。
+   */
+  playSequence(steps: readonly CinematicStep[]): void {
+    const resolved = this.resolveSequence(steps);
+    if (resolved.length === 0) return;
+
+    if (!this.activeValue) {
+      this.saved = {
+        position: this.camera.position.clone(),
+        target: this.controls.target.clone(),
+        fov: this.camera.fov,
+      };
+      this.activeValue = true;
+    }
+
+    this.controls.enabled = false;
+    this.tween = null;
+
+    const last = resolved[resolved.length - 1];
+    if (!last) return;
+
+    this.sequence = {
+      steps: resolved,
+      totalMs: last.startMs + last.durationMs,
+      from: {
+        position: this.camera.position.clone(),
+        target: this.controls.target.clone(),
+        fov: this.camera.fov,
+      },
+      startedAt: null,
+    };
+  }
+
+  /** FINAL THUNDER の標準タイムライン（プレス前 4 ショット）を再生する。 */
+  finalThunderSequence(options: FinalThunderSequenceOptions): void {
+    this.playSequence(finalThunderStepsFor(options));
   }
 
   /** 保存しておいたユーザー視点へ戻す。 */
@@ -225,6 +406,7 @@ export class CinematicCamera {
     // 毎フレーム呼ばれてもトゥイーンを巻き戻さない。
     if (this.tween?.mode === 'restore') return;
 
+    this.sequence = null;
     this.controls.enabled = false;
     this.tween = {
       startedAt: null,
@@ -240,6 +422,11 @@ export class CinematicCamera {
   }
 
   update(now: number): void {
+    if (this.sequence) {
+      this.updateSequence(now);
+      return;
+    }
+
     const tween = this.tween;
     if (!tween) return;
 
@@ -281,7 +468,7 @@ export class CinematicCamera {
     this.tween = null;
   }
 
-  /** 退室・破棄用。トゥイーンを待たずに元の視点へ戻す。 */
+  /** 退室・破棄用。トゥイーン・シーケンスを待たずに元の視点へ戻す。 */
   reset(): void {
     const saved = this.saved;
     if (saved) {
@@ -292,8 +479,96 @@ export class CinematicCamera {
       this.controls.enabled = true;
     }
     this.tween = null;
+    this.sequence = null;
     this.saved = null;
     this.activeValue = false;
+  }
+
+  private updateSequence(now: number): void {
+    const sequence = this.sequence;
+    if (!sequence) return;
+
+    const time = Number.isFinite(now) ? now : 0;
+    if (sequence.startedAt === null) sequence.startedAt = time;
+    const elapsed = Math.max(0, time - sequence.startedAt);
+
+    const lastIndex = sequence.steps.length - 1;
+    const last = sequence.steps[lastIndex];
+    if (!last) return;
+
+    if (elapsed >= sequence.totalMs) {
+      this.applyResolvedShot(last.shot);
+      return;
+    }
+
+    let index = 0;
+    while (index < lastIndex) {
+      const step = sequence.steps[index];
+      if (!step) break;
+      if (elapsed < step.startMs + step.durationMs) break;
+      index += 1;
+    }
+
+    const step = sequence.steps[index];
+    if (!step) return;
+
+    const local = Math.max(0, elapsed - step.startMs);
+    // 最初のステップだけは現在位置からステップ全長で移動する。
+    const transition =
+      index === 0 ? step.durationMs : Math.min(SEQUENCE_TRANSITION_MS, step.durationMs);
+    const previous = index === 0 ? sequence.from : sequence.steps[index - 1]?.shot;
+    if (!previous) return;
+
+    const t = transition <= EPSILON ? 1 : Math.min(1, Math.max(0, local / transition));
+
+    if (t >= 1) {
+      this.applyResolvedShot(step.shot);
+      return;
+    }
+
+    this.camera.position.copy(previous.position).lerp(step.shot.position, t);
+    this.controls.target.copy(previous.target).lerp(step.shot.target, t);
+    const fov = previous.fov + (step.shot.fov - previous.fov) * t;
+    if (Number.isFinite(fov)) this.camera.fov = fov;
+    this.camera.updateProjectionMatrix();
+    // OrbitControls は停止中なので、カメラの向きはここで明示的に更新する。
+    this.camera.lookAt(this.controls.target);
+  }
+
+  private applyResolvedShot(shot: ResolvedShot): void {
+    this.camera.position.copy(shot.position);
+    this.controls.target.copy(shot.target);
+    this.camera.fov = shot.fov;
+    this.camera.updateProjectionMatrix();
+    this.camera.lookAt(this.controls.target);
+  }
+
+  private resolveSequence(steps: readonly CinematicStep[]): SequenceStep[] {
+    const resolved: SequenceStep[] = [];
+    let startMs = 0;
+    let fov = this.camera.fov;
+
+    for (const step of steps) {
+      const duration = step.durationMs;
+      if (!Number.isFinite(duration) || duration <= 0) continue;
+
+      fov = validFov(step.shot.fov, fov);
+      resolved.push({
+        shot: {
+          position: clampShotPosition(
+            finiteVector(step.shot.position, this.camera.position),
+            this.bounds,
+          ),
+          target: finiteVector(step.shot.target, this.controls.target),
+          fov,
+        },
+        startMs,
+        durationMs: duration,
+      });
+      startMs += duration;
+    }
+
+    return resolved;
   }
 
   private beginShot(shot: CameraShot, duration: number): void {
@@ -306,6 +581,7 @@ export class CinematicCamera {
       this.activeValue = true;
     }
 
+    this.sequence = null;
     this.controls.enabled = false;
     this.tween = {
       startedAt: null,

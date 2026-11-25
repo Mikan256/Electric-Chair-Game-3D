@@ -90,16 +90,20 @@ const files = {
 // `Innovation.wav` (55 MB) is intentionally not shipped; see CREDITS.txt.
 
 /**
- * Generated in-repo with Piper TTS (scripts/generate-round-voice.sh). These are
- * not copied from the legacy Unity project, but they live in the same manifest
- * so the release hash check and loaders see one consistent asset list.
+ * Generated in-repo with Piper TTS (scripts/generate-round-voice.sh and
+ * scripts/generate-final-thunder-voice.sh). These are not copied from the
+ * legacy Unity project, but they live in the same manifest so the release hash
+ * check and loaders see one consistent asset list.
  */
-const generated = Object.fromEntries(
-  Array.from({ length: 8 }, (_, index) => [
-    `audio/voice/round-${index + 1}.mp3`,
-    `Piper TTS "Round ${index + 1}" (en_US-joe-medium, CC0)`,
-  ]),
-);
+const generated = {
+  ...Object.fromEntries(
+    Array.from({ length: 8 }, (_, index) => [
+      `audio/voice/round-${index + 1}.mp3`,
+      `Piper TTS "Round ${index + 1}" (en_US-joe-medium, CC0)`,
+    ]),
+  ),
+  'audio/voice/final-thunder.mp3': 'Piper TTS "Final Thunder" (en_US-joe-medium, CC0)',
+};
 
 const credits = `# Asset credits / 来歴
 
@@ -113,7 +117,7 @@ const credits = `# Asset credits / 来歴
 - 3D/エフェクト素材: DEVNIK 2D, FX_Kandol_Pack, GabrielAguiarProductions, LightningBolt
 - UI: Sci-Fi UI (zekton font を含む)
 - 3D アバター形式: UniVRM / VRM
-- ラウンドコール音声: Piper TTS (MIT) + en_US-joe-medium (CC0) で生成
+- ラウンドコール / FINAL THUNDER 音声: Piper TTS (MIT) + en_US-joe-medium (CC0) で生成
 
 元の Unity プロジェクトの \`LICENSE\` と各 Asset Store のライセンスに従ってください。
 \`Innovation.wav\` (55 MB) はビルドサイズ削減のため、圧縮した MP3 のみ同梱しています。
@@ -192,7 +196,10 @@ async function main() {
       };
       total += info.size;
     } catch {
-      console.warn(`✗ ${targetRel} (run scripts/generate-round-voice.sh)`);
+      const script = targetRel.includes('final-thunder')
+        ? 'scripts/generate-final-thunder-voice.sh'
+        : 'scripts/generate-round-voice.sh';
+      console.warn(`✗ ${targetRel} (run ${script})`);
     }
   }
 

@@ -1,7 +1,9 @@
 import { assetUrl, ASSETS } from '@/assets/registry';
-import { FINAL_THUNDER_CUTSCENE_MS } from '@/game/timing';
+import { FINAL_THUNDER_RESULT_REVEAL_MS, finalThunderTiming } from '@/game/timing';
 import type { MatchView } from '@/game/types';
+import { FinalThunderCall } from './final-thunder-call';
 import { FinalThunderPrompt, type FinalThunderChoice } from './final-thunder';
+import { MatchLogPanel } from './match-log-panel';
 import { RoomEntry } from './room-entry';
 
 export interface LobbyPlayer {
@@ -86,6 +88,8 @@ export class GameUI {
   private readonly cutinLayer: HTMLElement;
   private readonly roundCallLayer: HTMLElement;
   private readonly finalThunder: FinalThunderPrompt;
+  private readonly finalThunderCall: FinalThunderCall;
+  private readonly matchLog: MatchLogPanel;
   private roomEntry: RoomEntry | null = null;
   private roundCallTimer: ReturnType<typeof setTimeout> | null = null;
   private roundCallToken = 0;
@@ -134,6 +138,8 @@ export class GameUI {
     this.cutinLayer = root.querySelector<HTMLElement>('#ui-cutin')!;
     this.roundCallLayer = root.querySelector<HTMLElement>('#ui-round')!;
     this.finalThunder = new FinalThunderPrompt({ host: root });
+    this.finalThunderCall = new FinalThunderCall(root);
+    this.matchLog = new MatchLogPanel({ host: root });
   }
 
   clearCutIns(): void {
@@ -244,6 +250,8 @@ export class GameUI {
     }
     this.destroyRoomEntry();
     this.finalThunder.cancel();
+    this.finalThunderCall.hide();
+    this.matchLog.close();
     this.hud = null;
     this.setScreen(`
       <div class="screen title-screen">
@@ -352,6 +360,11 @@ export class GameUI {
     this.roomEntry = null;
   }
 
+  toggleMatchLog(): void {
+    if (!this.currentView) return;
+    this.matchLog.toggle(this.currentView);
+  }
+
   askFinalThunder(chair: number, playerName?: string): Promise<FinalThunderChoice> {
     return this.finalThunder.ask({ chair, playerName });
   }
@@ -366,6 +379,7 @@ export class GameUI {
 
   showLobby(state: LobbyState): void {
     this.destroyRoomEntry();
+    this.matchLog.close();
     this.hud = null;
     this.readyState = state.players.find((p) => p.id === state.youId)?.isReady ?? false;
     const statusText =
@@ -440,6 +454,7 @@ export class GameUI {
   // ------------------------------------------------------------------ game
 
   showGame(view: MatchView, options: { online: boolean; roomId: string | null }): void {
+    this.matchLog.close();
     this.currentView = view;
     this.pendingChair = null;
     this.lastTurn = -1;
@@ -475,6 +490,7 @@ export class GameUI {
           </div>
           <div class="actions">
             <button class="btn ghost small" id="btn-grid">椅子一覧</button>
+            <button class="btn ghost small" id="btn-log">試合経過</button>
             <span class="status" id="hud-status">椅子を選択</span>
             <button class="btn primary" id="btn-confirm" disabled>この椅子で決定</button>
             <button class="btn press hidden" id="btn-press">電流を流す</button>
@@ -548,6 +564,9 @@ export class GameUI {
     this.gridToggle?.addEventListener('click', () => {
       this.chairDrawer?.classList.toggle('hidden');
     });
+    this.screenHost
+      .querySelector('#btn-log')
+      ?.addEventListener('click', () => this.toggleMatchLog());
     this.screenHost.querySelector('#btn-forfeit')?.addEventListener('click', () => {
       this.callbacks.onForfeit();
     });
@@ -616,12 +635,12 @@ export class GameUI {
     }
     if (phaseChanged && view.phase === 'result') {
       if (view.lastResult?.hit) {
-        this.resultRevealAt = performance.now() + 900;
+        this.resultRevealAt = performance.now() + FINAL_THUNDER_RESULT_REVEAL_MS;
         if (this.resultRevealTimer !== null) clearTimeout(this.resultRevealTimer);
         this.resultRevealTimer = setTimeout(() => {
           this.resultRevealTimer = null;
           if (this.currentView) this.updateView(this.currentView);
-        }, 940);
+        }, FINAL_THUNDER_RESULT_REVEAL_MS + 40);
       } else {
         this.resultRevealAt = 0;
       }
@@ -629,14 +648,26 @@ export class GameUI {
       this.resultRevealAt = 0;
     }
     if (phaseChanged && view.phase === 'press') {
-      this.pressUnlockAt = performance.now() + FINAL_THUNDER_CUTSCENE_MS;
+      const timing = finalThunderTiming(view);
+      const defender = view.attacker === 0 ? 1 : 0;
+      this.finalThunderCall.show({
+        chair: view.sittingChair ?? 0,
+        attackerName: view.players[view.attacker].name,
+        defenderName: view.players[defender].name,
+        highStakes: timing.highStakes,
+        role: view.you === view.attacker ? 'attacker' : 'defender',
+        durationMs: 30_000,
+      });
+      const prePressMs = timing.prePressMs;
+      this.pressUnlockAt = performance.now() + prePressMs;
       if (this.pressUnlockTimer !== null) clearTimeout(this.pressUnlockTimer);
       this.pressUnlockTimer = setTimeout(() => {
         this.pressUnlockTimer = null;
         if (this.currentView) this.updateView(this.currentView);
-      }, FINAL_THUNDER_CUTSCENE_MS + 40);
+      }, prePressMs + 40);
     }
     this.lastPhase = view.phase;
+    if (view.phase !== 'press') this.finalThunderCall.hide();
     if (view.phase === 'set' && view.wiredCommitted) this.pendingChair = null;
     if (view.phase === 'sit' && view.sittingChair !== null) this.pendingChair = null;
 
@@ -739,6 +770,7 @@ export class GameUI {
     } else this.clearResult();
     if (view.phase === 'finished') this.renderWinner(view);
     else this.clearWinner();
+    this.matchLog.update(view);
   }
 
   private updateChairButtons(): void {
@@ -791,14 +823,22 @@ export class GameUI {
       <div class="result-title ${className}">${title}</div>
       <div class="result-sub">${escapeHtml(sub)}</div>
       <div class="result-detail">${escapeHtml(detail)}</div>
-      <button class="btn primary" id="btn-result-next" style="margin-top:16px">次へ</button>
+      <div class="row" style="margin-top:16px;justify-content:center">
+        <button class="btn primary" id="btn-result-next">次へ</button>
+        <button class="btn ghost small" id="btn-result-log">試合経過</button>
+      </div>
     `;
     overlay
       .querySelector('#btn-result-next')
       ?.addEventListener('click', () => this.callbacks.onAdvance());
+    overlay
+      .querySelector('#btn-result-log')
+      ?.addEventListener('click', () => this.toggleMatchLog());
     overlay.style.pointerEvents = 'none';
-    const button = overlay.querySelector<HTMLButtonElement>('#btn-result-next');
-    if (button) button.style.pointerEvents = 'auto';
+    for (const id of ['#btn-result-next', '#btn-result-log']) {
+      const button = overlay.querySelector<HTMLButtonElement>(id);
+      if (button) button.style.pointerEvents = 'auto';
+    }
   }
 
   private clearResult(): void {
@@ -967,5 +1007,7 @@ export class GameUI {
     }
     this.destroyRoomEntry();
     this.finalThunder.destroy();
+    this.finalThunderCall.destroy();
+    this.matchLog.destroy();
   }
 }

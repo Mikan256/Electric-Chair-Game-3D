@@ -1,18 +1,6 @@
 import * as THREE from 'three';
 import type { MatchView } from '@/game/types';
 
-export type MonitorResult = 'SHOCK' | 'SAFE' | '—';
-
-export interface MonitorRow {
-  readonly turn: number;
-  readonly attacker: string;
-  readonly sittingChair: number | null;
-  readonly wiredChair: number | null;
-  readonly result: MonitorResult;
-  readonly points: readonly [number, number];
-  readonly current: boolean;
-}
-
 export interface MatchMonitorOptions {
   readonly pixelWidth?: number;
   readonly pixelHeight?: number;
@@ -23,7 +11,6 @@ export interface MatchMonitorOptions {
 /** 描画は常にこの仮想解像度で行い、Canvas の実サイズへ拡大縮小する。 */
 const DESIGN_WIDTH = 1280;
 const DESIGN_HEIGHT = 640;
-const MAX_ROWS = 5;
 
 const FONT_STACK = '"Zekton", "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif';
 
@@ -32,19 +19,15 @@ const COLORS = {
   goldDim: '#b8912f',
   red: '#e5343f',
   redBright: '#ff5a63',
-  blue: '#4d9dff',
   cyan: '#5ad1ff',
   orange: '#ffa94d',
   shock: '#ff4d5a',
   safe: '#46e08a',
-  pending: '#7b8496',
   text: '#f4f6fb',
   textSoft: '#dfe5f2',
   textDim: '#8d97ad',
   textFaint: '#5b6478',
 } as const;
-
-const PLAYER_COLORS = [COLORS.cyan, COLORS.orange] as const;
 
 interface PhaseStyle {
   readonly jp: string;
@@ -71,61 +54,38 @@ const PHASE_STYLES: Record<MatchView['phase'], PhaseStyle> = {
   finished: { jp: '終了', en: 'FINISHED', color: '#9aa4b8', hint: '試合終了' },
 };
 
-/** レイアウト定数（デザイン座標）。 */
-const CARD_Y = 104;
-const CARD_H = 96;
-const CARD_W = 598;
-const TABLE_Y = 204;
-const TABLE_HEADER_H = 36;
-const ROW_H = 64;
-const ROWS_TOP = TABLE_Y + TABLE_HEADER_H;
-const TABLE_X = 28;
-const TABLE_W = 1224;
-const RIGHT_X = TABLE_X + TABLE_W;
-
-interface Column {
-  readonly label: string;
-  readonly x: number;
-  readonly width: number;
+/** ステージ後方モニターの大きな見出し（Canvas 非依存の純粋関数）。 */
+export function monitorHeadline(view: MatchView): string {
+  switch (view.phase) {
+    case 'press':
+      return 'FINAL THUNDER';
+    case 'result':
+      if (!view.lastResult) return 'RESULT';
+      return view.lastResult.hit ? 'SHOCK' : 'SAFE';
+    case 'finished':
+      return 'FINISHED';
+    default:
+      return 'MATCH LOG';
+  }
 }
 
-const COLUMNS = [
-  { label: '#', x: 28, width: 84 },
-  { label: '攻撃', x: 112, width: 316 },
-  { label: '着席', x: 428, width: 164 },
-  { label: '電流', x: 592, width: 164 },
-  { label: '判定', x: 756, width: 220 },
-  { label: 'PTS', x: 976, width: 276 },
-] as const satisfies readonly Column[];
+/** フェーズの表示ラベル（例: `SET / 仕掛け中`）。 */
+export function monitorPhaseLabel(view: MatchView): string {
+  const style = PHASE_STYLES[view.phase];
+  return `${style.en} / ${style.jp}`;
+}
 
 /**
- * 公開済みの history と、進行中の現在ターンからモニターの行を作る。
- * 現在行は電気イス（wiredChair）を絶対に含めない。
+ * モニターに出す椅子ラベル。
+ * press 中は仕掛けられた椅子を絶対に公開しないため常に `CHAIR ??`。
+ * result 以降は公開済みの lastResult.sittingChair だけを使う。
  */
-export function buildMonitorRows(view: MatchView): MonitorRow[] {
-  const rows: MonitorRow[] = view.history.map((result) => ({
-    turn: result.turn,
-    attacker: view.players[result.attacker].name,
-    sittingChair: result.sittingChair,
-    wiredChair: result.wiredChair,
-    result: result.hit ? 'SHOCK' : 'SAFE',
-    points: result.pointsAfter,
-    current: false,
-  }));
-
-  if (view.phase !== 'finished' && !view.history.some((result) => result.turn === view.turn)) {
-    rows.push({
-      turn: view.turn,
-      attacker: view.players[view.attacker].name,
-      sittingChair: view.sittingChair,
-      wiredChair: null,
-      result: '—',
-      points: [view.players[0].points, view.players[1].points],
-      current: true,
-    });
+export function monitorChairLabel(view: MatchView): string | null {
+  if (view.phase === 'press') return 'CHAIR ??';
+  if (view.phase === 'result' || view.phase === 'finished') {
+    return view.lastResult ? `CHAIR #${view.lastResult.sittingChair}` : null;
   }
-
-  return rows.slice(-MAX_ROWS);
+  return view.sittingChair === null ? null : `CHAIR #${view.sittingChair}`;
 }
 
 function pad2(value: number): string {
@@ -167,18 +127,9 @@ function roundedRect(
   context.closePath();
 }
 
-function truncateText(context: CanvasRenderingContext2D, text: string, maxWidth: number): string {
-  if (context.measureText(text).width <= maxWidth) return text;
-  const ellipsis = '…';
-  let result = text;
-  while (result.length > 0 && context.measureText(`${result}${ellipsis}`).width > maxWidth) {
-    result = result.slice(0, -1);
-  }
-  return result.length > 0 ? `${result}${ellipsis}` : ellipsis;
-}
-
 /**
- * ステージ後方モニター用の試合経過表。
+ * ステージ後方モニター。試合の詳細表は持たず、ロゴとフェーズの要約だけを
+ * 表示する装飾スクリーン。詳細は通常 UI の「試合経過」パネルが担当する。
  * Canvas 2D で描いた内容を CanvasTexture として PlaneGeometry に貼る。
  */
 export class MatchMonitor {
@@ -192,7 +143,6 @@ export class MatchMonitor {
 
   private lastRevision: number | null = null;
   private lastMatchId: string | null = null;
-  private lastRows: MonitorRow[] = [];
   private standby = true;
 
   constructor(options: MatchMonitorOptions = {}) {
@@ -225,15 +175,9 @@ export class MatchMonitor {
     this.paint((context) => this.drawStandby(context));
   }
 
-  /** 直近に描画した表の行（テスト・デバッグ用）。 */
-  get rows(): readonly MonitorRow[] {
-    return this.lastRows;
-  }
-
   /** null でスタンバイ画面、同じ revision の再送はスキップする。 */
   update(view: MatchView | null): void {
     if (view === null) {
-      this.lastRows = [];
       if (!this.standby) {
         this.standby = true;
         this.lastRevision = null;
@@ -250,7 +194,6 @@ export class MatchMonitor {
     this.standby = false;
     this.lastRevision = view.revision;
     this.lastMatchId = view.matchId;
-    this.lastRows = buildMonitorRows(view);
     this.paint((context) => this.drawView(context, view));
   }
 
@@ -289,31 +232,31 @@ export class MatchMonitor {
 
     setFont(context, 22, '800');
     context.fillStyle = COLORS.gold;
-    context.fillText('ELECTRIC CHAIR GAME', DESIGN_WIDTH / 2, 238);
+    context.fillText('ELECTRIC CHAIR GAME', DESIGN_WIDTH / 2, 218);
 
     context.fillStyle = 'rgba(255, 207, 92, 0.35)';
-    context.fillRect(DESIGN_WIDTH / 2 - 180, 260, 360, 2);
+    context.fillRect(DESIGN_WIDTH / 2 - 180, 242, 360, 2);
 
-    setFont(context, 66, '800');
+    setFont(context, 82, '800');
     context.fillStyle = COLORS.text;
-    context.fillText('MATCH LOG', DESIGN_WIDTH / 2, 314);
+    context.fillText('MATCH LOG', DESIGN_WIDTH / 2, 306);
 
     setFont(context, 24, '800');
     context.fillStyle = COLORS.textDim;
-    context.fillText('S T A N D B Y', DESIGN_WIDTH / 2, 386);
+    context.fillText('S T A N D B Y', DESIGN_WIDTH / 2, 382);
 
-    setFont(context, 18, '600');
+    setFont(context, 20, '600');
     context.fillStyle = COLORS.textFaint;
     context.fillText('試合開始を待っています', DESIGN_WIDTH / 2, 424);
+
+    this.drawDetailsHint(context);
   }
 
   private drawView(context: CanvasRenderingContext2D, view: MatchView): void {
     this.drawBackdrop(context);
     this.drawFrame(context);
     this.drawHeader(context, view);
-    this.drawPlayer(context, view, 0);
-    this.drawPlayer(context, view, 1);
-    this.drawTable(context, view);
+    this.drawHero(context, view);
     this.drawFooter(context, view);
   }
 
@@ -411,17 +354,17 @@ export class MatchMonitor {
     context.textAlign = 'right';
     setFont(context, 17, '700');
     context.fillStyle = COLORS.textDim;
-    context.fillText('TURN', RIGHT_X, 30);
+    context.fillText('TURN', DESIGN_WIDTH - 28, 30);
 
     setFont(context, 44, '800');
     context.fillStyle = COLORS.gold;
-    context.fillText(`${pad2(view.turn)} / ${pad2(view.config.maxTurns)}`, RIGHT_X, 71);
+    context.fillText(`${pad2(view.turn)} / ${pad2(view.config.maxTurns)}`, DESIGN_WIDTH - 28, 71);
 
     const chipText = `${phase.jp}  ${phase.en}`;
-    setFont(context, 22, '800');
-    const chipWidth = context.measureText(chipText).width + 38;
-    const chipHeight = 44;
-    const chipX = 1080 - chipWidth;
+    setFont(context, 21, '800');
+    const chipWidth = context.measureText(chipText).width + 36;
+    const chipHeight = 42;
+    const chipX = 1030 - chipWidth;
     const chipY = 26;
 
     roundedRect(context, chipX, chipY, chipWidth, chipHeight, 8);
@@ -436,237 +379,118 @@ export class MatchMonitor {
     context.fillText(chipText, chipX + chipWidth / 2, chipY + chipHeight / 2 + 1);
   }
 
-  private drawPlayer(context: CanvasRenderingContext2D, view: MatchView, index: 0 | 1): void {
-    const cardX = index === 0 ? TABLE_X : TABLE_X + CARD_W + 28;
-    const color = index === 0 ? PLAYER_COLORS[0] : PLAYER_COLORS[1];
-    const player = view.players[index];
-    const attacking = view.attacker === index;
+  private drawHero(context: CanvasRenderingContext2D, view: MatchView): void {
+    const phase = PHASE_STYLES[view.phase];
+    const headline = monitorHeadline(view);
+    const centerX = DESIGN_WIDTH / 2;
 
-    const cardGradient = context.createLinearGradient(
-      cardX,
-      CARD_Y,
-      cardX + CARD_W,
-      CARD_Y + CARD_H,
-    );
-    cardGradient.addColorStop(0, rgba(color, 0.18));
-    cardGradient.addColorStop(1, rgba(color, 0.03));
+    if (view.phase === 'press') {
+      this.drawFinalThunder(context, view);
+      return;
+    }
 
-    roundedRect(context, cardX, CARD_Y, CARD_W, CARD_H, 10);
-    context.fillStyle = cardGradient;
-    context.fill();
-    context.strokeStyle = rgba(color, attacking ? 0.85 : 0.35);
-    context.lineWidth = attacking ? 2 : 1;
-    context.stroke();
+    if (view.phase === 'result') {
+      const hit = view.lastResult?.hit ?? false;
+      const color = view.lastResult ? (hit ? COLORS.shock : COLORS.safe) : COLORS.gold;
+      this.drawGlowText(context, headline, centerX, 300, color, 46);
+      setFont(context, 36, '800');
+      context.fillStyle = color;
+      context.fillText(view.lastResult ? (hit ? '感電' : '回避') : '判定中', centerX, 402);
 
-    context.fillStyle = color;
-    context.fillRect(cardX, CARD_Y + 10, 4, CARD_H - 20);
+      const chairLabel = monitorChairLabel(view);
+      if (chairLabel) {
+        setFont(context, 26, '700');
+        context.fillStyle = COLORS.textDim;
+        context.fillText(chairLabel, centerX, 456);
+      }
+      return;
+    }
 
-    setFont(context, 26, '800');
-    context.textAlign = 'left';
-    context.fillStyle = COLORS.text;
-    context.fillText(truncateText(context, player.name, CARD_W - 190), cardX + 22, CARD_Y + 32);
+    if (view.phase === 'finished') {
+      context.textAlign = 'center';
+      this.drawGlowText(context, headline, centerX, 292, COLORS.gold, 34);
 
-    const badge = attacking ? 'ATTACK' : 'DEFEND';
-    const badgeColor = attacking ? COLORS.redBright : COLORS.blue;
-    setFont(context, 15, '800');
-    const badgeWidth = context.measureText(badge).width + 26;
-    const badgeX = cardX + CARD_W - badgeWidth - 18;
-    const badgeY = CARD_Y + 12;
+      const outcome = view.outcome;
+      const outcomeText =
+        outcome?.kind === 'win' && outcome.winner !== null
+          ? `${view.players[outcome.winner].name} WIN`
+          : outcome?.kind === 'draw'
+            ? 'DRAW'
+            : '';
+      if (outcomeText) {
+        setFont(context, 40, '800');
+        context.fillStyle = COLORS.text;
+        context.fillText(outcomeText, centerX, 386);
+      }
 
-    roundedRect(context, badgeX, badgeY, badgeWidth, 24, 6);
-    context.fillStyle = rgba(badgeColor, 0.18);
-    context.fill();
-    context.strokeStyle = rgba(badgeColor, 0.75);
-    context.lineWidth = 1.2;
-    context.stroke();
+      setFont(context, 22, '600');
+      context.fillStyle = COLORS.textDim;
+      context.fillText(phase.hint, centerX, 442);
+      return;
+    }
 
+    // set / sit: ロゴとフェーズの要約だけ。
     context.textAlign = 'center';
-    context.fillStyle = badgeColor;
-    context.fillText(badge, badgeX + badgeWidth / 2, badgeY + 13);
-
-    setFont(context, 14, '700');
-    context.textAlign = 'left';
-    context.fillStyle = COLORS.textDim;
-    context.fillText('PTS', cardX + 22, CARD_Y + 58);
-
-    setFont(context, 40, '800');
-    context.fillStyle = color;
-    context.fillText(String(player.points), cardX + 58, CARD_Y + 76);
-
-    context.fillStyle = 'rgba(255, 255, 255, 0.10)';
-    context.fillRect(cardX + 190, CARD_Y + 48, 1, 34);
-
-    setFont(context, 14, '700');
-    context.textAlign = 'right';
-    context.fillStyle = COLORS.textDim;
-    context.fillText('SHOCKS / 感電させた', cardX + CARD_W - 20, CARD_Y + 58);
-
-    setFont(context, 34, '800');
-    context.fillStyle = attacking ? COLORS.gold : COLORS.text;
-    context.fillText(
-      `${player.shocksDealt} / ${view.config.shocksToWin}`,
-      cardX + CARD_W - 20,
-      CARD_Y + 80,
-    );
-  }
-
-  private drawTable(context: CanvasRenderingContext2D, view: MatchView): void {
-    const [turnColumn, attackerColumn, sitColumn, wireColumn, judgeColumn, pointsColumn] = COLUMNS;
-    const rows = buildMonitorRows(view);
-    const headerCenterY = TABLE_Y + TABLE_HEADER_H / 2 + 1;
-
-    roundedRect(context, TABLE_X, TABLE_Y, TABLE_W, TABLE_HEADER_H, 6);
-    context.fillStyle = 'rgba(255, 207, 92, 0.09)';
-    context.fill();
-    context.strokeStyle = 'rgba(255, 207, 92, 0.22)';
-    context.lineWidth = 1;
-    context.stroke();
 
     setFont(context, 22, '800');
-    context.fillStyle = COLORS.goldDim;
-    context.textAlign = 'center';
-    for (const column of [turnColumn, sitColumn, wireColumn, judgeColumn, pointsColumn]) {
-      context.fillText(column.label, column.x + column.width / 2, headerCenterY);
-    }
-    context.textAlign = 'left';
-    context.fillText(attackerColumn.label, attackerColumn.x + 16, headerCenterY);
+    context.fillStyle = COLORS.gold;
+    context.fillText('ELECTRIC CHAIR GAME', centerX, 206);
 
-    context.fillStyle = 'rgba(5, 8, 18, 0.55)';
-    context.fillRect(TABLE_X, ROWS_TOP, TABLE_W, ROW_H * MAX_ROWS);
+    context.fillStyle = 'rgba(255, 207, 92, 0.35)';
+    context.fillRect(centerX - 160, 230, 320, 2);
 
-    for (const [index, row] of rows.entries()) {
-      const attackerColor =
-        row.attacker === view.players[0].name ? PLAYER_COLORS[0] : PLAYER_COLORS[1];
-      this.drawRow(context, row, index, attackerColor);
+    setFont(context, 82, '800');
+    context.fillStyle = COLORS.text;
+    context.fillText(headline, centerX, 296);
+
+    setFont(context, 96, '800');
+    context.fillStyle = phase.color;
+    context.fillText(phase.en, centerX, 400);
+
+    setFont(context, 28, '700');
+    context.fillStyle = COLORS.textSoft;
+    context.fillText(phase.jp, centerX, 464);
+
+    setFont(context, 20, '600');
+    context.fillStyle = COLORS.textDim;
+    context.fillText(phase.hint, centerX, 508);
+
+    const chairLabel = monitorChairLabel(view);
+    if (chairLabel) {
+      setFont(context, 24, '700');
+      context.fillStyle = COLORS.goldDim;
+      context.fillText(chairLabel, centerX, 548);
     }
   }
 
-  private drawRow(
-    context: CanvasRenderingContext2D,
-    row: MonitorRow,
-    index: number,
-    attackerColor: string,
-  ): void {
-    const [turnColumn, attackerColumn, sitColumn, wireColumn, judgeColumn, pointsColumn] = COLUMNS;
-    const y = ROWS_TOP + index * ROW_H;
-    const centerY = y + ROW_H / 2 + 1;
+  private drawFinalThunder(context: CanvasRenderingContext2D, view: MatchView): void {
+    const centerX = DESIGN_WIDTH / 2;
 
-    if (row.current) {
-      const highlight = context.createLinearGradient(TABLE_X, y, RIGHT_X, y);
-      highlight.addColorStop(0, 'rgba(255, 207, 92, 0.26)');
-      highlight.addColorStop(0.55, 'rgba(255, 207, 92, 0.10)');
-      highlight.addColorStop(1, 'rgba(255, 90, 99, 0.10)');
-      context.fillStyle = highlight;
-      context.fillRect(TABLE_X, y, TABLE_W, ROW_H);
-
-      context.fillStyle = COLORS.gold;
-      context.fillRect(TABLE_X, y + 4, 5, ROW_H - 8);
-
-      context.strokeStyle = 'rgba(255, 207, 92, 0.45)';
-      context.lineWidth = 1;
-      context.beginPath();
-      context.moveTo(TABLE_X, y + 0.5);
-      context.lineTo(RIGHT_X, y + 0.5);
-      context.stroke();
-    } else if (index % 2 === 1) {
-      context.fillStyle = 'rgba(255, 255, 255, 0.025)';
-      context.fillRect(TABLE_X, y, TABLE_W, ROW_H);
-    }
-
-    context.strokeStyle = 'rgba(255, 255, 255, 0.06)';
-    context.lineWidth = 1;
-    context.beginPath();
-    context.moveTo(TABLE_X, y + ROW_H - 0.5);
-    context.lineTo(RIGHT_X, y + ROW_H - 0.5);
-    context.stroke();
-
-    setFont(context, 44, row.current ? '800' : '700');
     context.textAlign = 'center';
-    context.fillStyle = row.current ? COLORS.gold : COLORS.textDim;
-    context.fillText(pad2(row.turn), turnColumn.x + turnColumn.width / 2, centerY);
 
-    context.fillStyle = attackerColor;
-    context.beginPath();
-    context.arc(attackerColumn.x + 14, centerY, 5, 0, Math.PI * 2);
-    context.fill();
+    const gradient = context.createLinearGradient(centerX - 420, 0, centerX + 420, 0);
+    gradient.addColorStop(0, COLORS.red);
+    gradient.addColorStop(0.5, COLORS.gold);
+    gradient.addColorStop(1, COLORS.red);
 
-    setFont(context, 44, row.current ? '800' : '700');
-    context.textAlign = 'left';
-    context.fillStyle = row.current ? COLORS.text : COLORS.textSoft;
-    context.fillText(
-      truncateText(context, row.attacker, attackerColumn.width - 40),
-      attackerColumn.x + 30,
-      centerY,
-    );
+    context.save();
+    context.shadowColor = rgba(COLORS.redBright, 0.75);
+    context.shadowBlur = 40;
+    setFont(context, 108, '900');
+    context.fillStyle = gradient;
+    context.fillText('FINAL THUNDER', centerX, 280);
+    context.restore();
 
-    setFont(context, 46, '800');
-    context.textAlign = 'center';
-    if (row.sittingChair === null) {
-      context.fillStyle = COLORS.textFaint;
-      context.fillText('—', sitColumn.x + sitColumn.width / 2, centerY);
-    } else {
-      context.fillStyle = row.current ? COLORS.text : COLORS.textSoft;
-      context.fillText(`#${row.sittingChair}`, sitColumn.x + sitColumn.width / 2, centerY);
-    }
+    this.drawGlowText(context, 'CHAIR ??', centerX, 398, COLORS.gold, 30, 110);
 
-    if (row.wiredChair === null) {
-      context.fillStyle = rgba(COLORS.gold, 0.75);
-      context.fillText('???', wireColumn.x + wireColumn.width / 2, centerY);
-    } else {
-      context.fillStyle = COLORS.orange;
-      context.fillText(`#${row.wiredChair}`, wireColumn.x + wireColumn.width / 2, centerY);
-    }
+    setFont(context, 26, '700');
+    context.fillStyle = COLORS.textDim;
+    const seated = view.sittingChair === null ? '着席 —' : `着席 #${view.sittingChair}`;
+    context.fillText(seated, centerX, 470);
 
-    const resultColor =
-      row.result === 'SHOCK' ? COLORS.shock : row.result === 'SAFE' ? COLORS.safe : COLORS.pending;
-    const chipWidth = 144;
-    const chipHeight = 44;
-    const chipX = judgeColumn.x + (judgeColumn.width - chipWidth) / 2;
-    const chipY = y + (ROW_H - chipHeight) / 2;
-
-    roundedRect(context, chipX, chipY, chipWidth, chipHeight, 6);
-    context.fillStyle = rgba(resultColor, row.current ? 0.22 : 0.12);
-    context.fill();
-    context.strokeStyle = rgba(resultColor, row.current ? 0.7 : 0.4);
-    context.lineWidth = 1;
-    context.stroke();
-
-    setFont(context, 32, '800');
-    context.fillStyle = resultColor;
-    context.fillText(row.result, chipX + chipWidth / 2, centerY);
-
-    this.drawPoints(context, row.points, pointsColumn.x + pointsColumn.width / 2, centerY);
-  }
-
-  private drawPoints(
-    context: CanvasRenderingContext2D,
-    points: readonly [number, number],
-    centerX: number,
-    centerY: number,
-  ): void {
-    const separator = ' / ';
-    setFont(context, 44, '800');
-
-    const first = String(points[0]);
-    const second = String(points[1]);
-    const firstWidth = context.measureText(first).width;
-    const secondWidth = context.measureText(second).width;
-    const separatorWidth = context.measureText(separator).width;
-    const totalWidth = firstWidth + separatorWidth + secondWidth;
-
-    let x = centerX - totalWidth / 2;
-    context.textAlign = 'left';
-
-    context.fillStyle = PLAYER_COLORS[0];
-    context.fillText(first, x, centerY);
-    x += firstWidth;
-
-    context.fillStyle = COLORS.textFaint;
-    context.fillText(separator, x, centerY);
-    x += separatorWidth;
-
-    context.fillStyle = PLAYER_COLORS[1];
-    context.fillText(second, x, centerY);
+    setFont(context, 20, '800');
+    context.fillStyle = COLORS.redBright;
+    context.fillText('PRESS THE BUTTON', centerX, 516);
   }
 
   private drawFooter(context: CanvasRenderingContext2D, view: MatchView): void {
@@ -675,33 +499,45 @@ export class MatchMonitor {
     context.strokeStyle = 'rgba(255, 207, 92, 0.18)';
     context.lineWidth = 1;
     context.beginPath();
-    context.moveTo(TABLE_X, 568);
-    context.lineTo(RIGHT_X, 568);
+    context.moveTo(28, 568);
+    context.lineTo(DESIGN_WIDTH - 28, 568);
     context.stroke();
 
+    this.drawDetailsHint(context);
+
+    context.textAlign = 'right';
+    setFont(context, 18, '700');
+    context.fillStyle = COLORS.textDim;
+    context.fillText(`${phase.jp} — ${phase.hint}`, DESIGN_WIDTH - 32, 606);
+  }
+
+  private drawDetailsHint(context: CanvasRenderingContext2D): void {
     context.textAlign = 'left';
     setFont(context, 15, '800');
     context.fillStyle = COLORS.goldDim;
-    context.fillText('RETIRED CHAIRS / 使用不可', TABLE_X, 587);
+    context.fillText('MATCH DETAILS / 試合詳細', 32, 587);
 
-    if (view.retiredChairs.length > 0) {
-      setFont(context, 30, '800');
-      context.fillStyle = COLORS.gold;
-      const list = view.retiredChairs.map((chair) => `#${chair}`).join('   ');
-      context.fillText(truncateText(context, list, 610), TABLE_X, 616);
-    } else {
-      setFont(context, 24, '700');
-      context.fillStyle = COLORS.textFaint;
-      context.fillText('なし / NONE', TABLE_X, 616);
-    }
+    setFont(context, 20, '600');
+    context.fillStyle = COLORS.textFaint;
+    context.fillText('画面下の「試合経過」ボタンで全ターンの詳細を表示', 32, 612);
+  }
 
-    context.textAlign = 'right';
-    setFont(context, 15, '800');
-    context.fillStyle = COLORS.goldDim;
-    context.fillText('STATUS / 状況', RIGHT_X, 587);
-
-    setFont(context, 22, '700');
-    context.fillStyle = COLORS.textSoft;
-    context.fillText(`${phase.jp} — ${phase.hint}`, RIGHT_X, 616);
+  private drawGlowText(
+    context: CanvasRenderingContext2D,
+    text: string,
+    centerX: number,
+    y: number,
+    color: string,
+    blur: number,
+    size = 150,
+  ): void {
+    context.save();
+    context.textAlign = 'center';
+    context.shadowColor = rgba(color, 0.8);
+    context.shadowBlur = blur;
+    setFont(context, size, '900');
+    context.fillStyle = color;
+    context.fillText(text, centerX, y);
+    context.restore();
   }
 }

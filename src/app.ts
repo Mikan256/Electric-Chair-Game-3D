@@ -7,6 +7,7 @@ import { MatchSession } from '@/net/session';
 import type { Transport } from '@/net/transport';
 import { GAME_ID } from '@/assets/registry';
 import { Theater } from '@/scene/stage';
+import { finalThunderTiming } from '@/game/timing';
 import { GameUI, type LobbyState } from '@/ui/game-ui';
 
 type Mode = 'title' | 'solo' | 'online';
@@ -453,6 +454,7 @@ export class App {
       this.lastPhase = null;
       this.lastViewTurn = -1;
       this.lastRoundCalled = -1;
+      this.theater.audio.stopFinalThunderTension(false);
       this.theater.audio.stopBgm(350);
       this.theater.audio.preloadRounds();
       void this.theater.audio.playGameBgm(0.22);
@@ -478,9 +480,11 @@ export class App {
     this.ui.updateView(view);
     this.theater.applyView(view);
     if (view.phase === 'press' && this.lastPhase !== 'press') {
-      void this.theater.audio.playHeartbeat(true);
+      const timing = finalThunderTiming(view);
+      void this.theater.audio.playFinalThunderCall();
+      this.theater.audio.startFinalThunderTension(timing.prePressMs);
     } else if (view.phase !== 'press' && this.lastPhase === 'press') {
-      this.theater.audio.stopHeartbeat();
+      this.theater.audio.stopFinalThunderTension();
     }
     if (view.phase === 'result' && view.lastResult) {
       const result = view.lastResult;
@@ -615,6 +619,7 @@ export class App {
     this.resetSession();
     this.ui.cancelFinalThunder();
     this.theater.audio.stopHeartbeat();
+    this.theater.audio.stopFinalThunderTension();
     this.theater.audio.stopGameBgm(300);
     this.theater.audio.stopRoundVoice();
     this.ui.clearRoundCall();

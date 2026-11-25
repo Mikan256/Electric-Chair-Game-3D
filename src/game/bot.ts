@@ -1,5 +1,5 @@
 import { createRng } from '@/game/rng';
-import { FINAL_THUNDER_CUTSCENE_MS } from '@/game/timing';
+import { finalThunderTiming } from '@/game/timing';
 import type { MatchSession } from '@/net/session';
 
 export interface BotOptions {
@@ -58,9 +58,10 @@ export function attachBot(session: MatchSession, options: BotOptions = {}): () =
       act();
       return;
     }
+    const view = session.view;
     const wait =
-      session.view?.phase === 'press'
-        ? Math.max(delayMs, FINAL_THUNDER_CUTSCENE_MS + 80)
+      view?.phase === 'press'
+        ? Math.max(delayMs, finalThunderTiming(view).prePressMs + 80)
         : delayMs;
     timer = setTimeout(act, wait);
   };

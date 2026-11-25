@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
-test.describe('stage camera and rear monitor', () => {
-  test('orbits 360° inside the room and shows the match progress', async ({ page }) => {
+test.describe('stage camera', () => {
+  test('orbits 360° inside the room and resolves a turn', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('console', (message) => {
@@ -19,12 +19,8 @@ test.describe('stage camera and rear monitor', () => {
       return {
         azimuth: stage.cameraAzimuth,
         position: { x: position.x, y: position.y, z: position.z },
-        rows: stage.monitorRows,
       };
     });
-
-    expect(before.rows.length).toBeGreaterThan(0);
-    expect(before.rows.at(-1)).toMatchObject({ turn: 1, current: true, wiredChair: null });
 
     // 3D ビューをドラッグして 360° 回転させる。
     const box = await page.locator('#stage').boundingBox();
@@ -61,25 +57,13 @@ test.describe('stage camera and rear monitor', () => {
     expect(after.position.y).toBeGreaterThan(1);
     expect(after.position.y).toBeLessThan(12);
 
-    // 仕掛け中はモニターに電気椅子を出さない。
+    // 仕掛け→着席→ボタン→結果まで進む。
     await page.locator('#btn-grid').click();
     await page.locator('.chair-btn[data-chair="5"]').click();
     await page.locator('#btn-confirm').click();
     await expect(page.locator('#btn-press')).toBeVisible({ timeout: 15_000 });
-    const duringPress = await page.evaluate(() => window.__stage?.monitorRows ?? []);
-    expect(duringPress.at(-1)).toMatchObject({ turn: 1, current: true, wiredChair: null });
-
-    // ボタンを押した後は結果行に電気椅子が公開される。
     await page.locator('#btn-press').click();
     await expect(page.locator('#result-overlay')).toBeVisible({ timeout: 15_000 });
-    await expect
-      .poll(
-        async () => page.evaluate(() => window.__stage?.monitorRows.at(-1)?.wiredChair ?? null),
-        {
-          timeout: 10_000,
-        },
-      )
-      .toBe(5);
 
     expect(errors).toEqual([]);
   });
