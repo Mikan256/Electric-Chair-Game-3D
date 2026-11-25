@@ -113,6 +113,8 @@ export class GameUI {
   private localActionPending = false;
   private pressUnlockAt = 0;
   private pressUnlockTimer: ReturnType<typeof setTimeout> | null = null;
+  private resultRevealAt = 0;
+  private resultRevealTimer: ReturnType<typeof setTimeout> | null = null;
   private resultRenderedTurn = -1;
   private winnerRenderedKey = '';
   private scoreSubmitted = false;
@@ -235,6 +237,11 @@ export class GameUI {
       this.pressUnlockTimer = null;
     }
     this.pressUnlockAt = 0;
+    this.resultRevealAt = 0;
+    if (this.resultRevealTimer !== null) {
+      clearTimeout(this.resultRevealTimer);
+      this.resultRevealTimer = null;
+    }
     this.destroyRoomEntry();
     this.finalThunder.cancel();
     this.hud = null;
@@ -526,6 +533,11 @@ export class GameUI {
       clearTimeout(this.pressUnlockTimer);
       this.pressUnlockTimer = null;
     }
+    this.resultRevealAt = 0;
+    if (this.resultRevealTimer !== null) {
+      clearTimeout(this.resultRevealTimer);
+      this.resultRevealTimer = null;
+    }
 
     this.confirmButton?.addEventListener('click', () => {
       if (this.pendingChair === null) return;
@@ -601,6 +613,20 @@ export class GameUI {
     if (phaseChanged) {
       this.pendingChair = null;
       this.localActionPending = false;
+    }
+    if (phaseChanged && view.phase === 'result') {
+      if (view.lastResult?.hit) {
+        this.resultRevealAt = performance.now() + 900;
+        if (this.resultRevealTimer !== null) clearTimeout(this.resultRevealTimer);
+        this.resultRevealTimer = setTimeout(() => {
+          this.resultRevealTimer = null;
+          if (this.currentView) this.updateView(this.currentView);
+        }, 940);
+      } else {
+        this.resultRevealAt = 0;
+      }
+    } else if (view.phase !== 'result') {
+      this.resultRevealAt = 0;
     }
     if (phaseChanged && view.phase === 'press') {
       this.pressUnlockAt = performance.now() + FINAL_THUNDER_CUTSCENE_MS;
@@ -707,8 +733,10 @@ export class GameUI {
       .querySelector('.bottom-panel')
       ?.classList.toggle('hidden', view.phase === 'result' || view.phase === 'finished');
 
-    if (view.phase === 'result') this.renderResult(view);
-    else this.clearResult();
+    if (view.phase === 'result') {
+      if (performance.now() >= this.resultRevealAt) this.renderResult(view);
+      else this.clearResult();
+    } else this.clearResult();
     if (view.phase === 'finished') this.renderWinner(view);
     else this.clearWinner();
   }
@@ -910,6 +938,12 @@ export class GameUI {
     this.screenHost.innerHTML = html;
   }
 
+  /** 感電カットイン中は「次へ」をまだ押せない。 */
+  get canAdvanceResult(): boolean {
+    const view = this.currentView;
+    return !!view && view.phase === 'result' && performance.now() >= this.resultRevealAt;
+  }
+
   /** 演出中でボタンがまだ押せない場合は false。 */
   get canPressNow(): boolean {
     const view = this.currentView;
@@ -926,6 +960,10 @@ export class GameUI {
     if (this.pressUnlockTimer !== null) {
       clearTimeout(this.pressUnlockTimer);
       this.pressUnlockTimer = null;
+    }
+    if (this.resultRevealTimer !== null) {
+      clearTimeout(this.resultRevealTimer);
+      this.resultRevealTimer = null;
     }
     this.destroyRoomEntry();
     this.finalThunder.destroy();

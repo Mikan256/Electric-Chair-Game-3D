@@ -58,7 +58,8 @@ pnpm dev
 ```
 main.ts → App
   ├── Theater (three.js)   : scene/stage.ts, orbit-camera.ts, match-monitor.ts,
-  │                          duelists.ts, chair.ts, effects.ts, audio.ts
+  │                          duelists.ts, cinematic-camera.ts, chair.ts,
+  │                          effects.ts, audio.ts
   ├── GameUI (DOM)         : ui/game-ui.ts, ui/styles.css,
   │                          ui/room-entry.ts, ui/final-thunder.ts
   ├── FlaxiaClient         : net/flaxia-client.ts（postMessage 契約）

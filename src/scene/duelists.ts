@@ -132,16 +132,88 @@ const RELIEF: Pose = {
 const PRIMITIVE_ATTACKER = 0xb51f2f;
 const PRIMITIVE_DEFENDER = 0x207a9e;
 
+/**
+ * 椅子の座面（約 1.07m）に腰が乗るよう、守備側の root を浮かせる。
+ * VRM の腰は約 1.02m、プリミティブの hips は 1.0m なので、
+ * どちらもこの lift で太ももの付け根が座面の高さに揃う。
+ */
+const SIT_LIFT = 0.14;
+
+/**
+ * 座面の前寄り（ステージ中央側）へずらす量。
+ *
+ * この椅子は脚の空間が無いブロック型なので、中心に座ると折り曲げた膝から
+ * 下の脚がブロック内部に埋まる。腰を座面の前端へ寄せると、太ももは座面に
+ * 乗ったまま、すねと靴が椅子の前面より外へ出る。
+ */
+const SIT_SEAT_SHIFT = 0.12;
+
+interface VrmMaterialSource {
+  map?: THREE.Texture | null;
+  transparent?: boolean;
+  opacity?: number;
+  alphaTest?: number;
+  side?: THREE.Side;
+  depthWrite?: boolean;
+  blending?: THREE.Blending;
+  color?: THREE.Color;
+}
+
+/**
+ * ステージのスポットライトは白い椅子が飛ばないよう強めに設定している。
+ * その光を MToon のまま受けるとアバターの白い服・肌が完全に白飛びするため、
+ * VRM の各メッシュを「テクスチャをそのまま見せる無照明マテリアル」へ置き換える。
+ * これでライトの強さに依存せず、顔・服の色が読める。
+ */
+function toBasicVrmMaterial(material: THREE.Material): THREE.Material {
+  const source = material as unknown as VrmMaterialSource;
+  const outline = /outline/i.test(material.name);
+  const skin = /_SKIN/i.test(material.name);
+  const basic = new THREE.MeshBasicMaterial({
+    map: outline ? null : (source.map ?? null),
+    color: outline
+      ? new THREE.Color(0x111111)
+      : skin
+        ? new THREE.Color(0xffe4d2)
+        : (source.color?.clone() ?? new THREE.Color(0xffffff)),
+    transparent: source.transparent ?? false,
+    opacity: source.opacity ?? 1,
+    alphaTest: source.alphaTest ?? 0,
+    side: source.side ?? THREE.FrontSide,
+    depthWrite: source.depthWrite ?? true,
+    blending: source.blending ?? THREE.NormalBlending,
+    toneMapped: true,
+  });
+  basic.name = `${material.name} (basic)`;
+  return basic;
+}
+
+/** 同じマテリアルを複数メッシュで共有していても一度だけ置き換える。 */
+function flattenVrmMaterials(vrm: VRM): void {
+  const cache = new Map<THREE.Material, THREE.Material>();
+  vrm.scene.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    const next = materials.map((material) => {
+      const cached = cache.get(material);
+      if (cached) return cached;
+      const basic = toBasicVrmMaterial(material);
+      cache.set(material, basic);
+      return basic;
+    });
+    child.material = next.length === 1 ? next[0]! : next;
+  });
+  // Shader programs are no longer needed; the texture maps are still referenced
+  // by the new basic materials, so disposing the old materials is safe.
+  for (const material of cache.keys()) material.dispose();
+}
+
 function mixPose(from: Pose, to: Pose, t: number): Pose {
   const result: Partial<Record<PoseBone, Vec3>> = {};
   for (const bone of POSE_BONES) {
     const a = from[bone] ?? ZERO;
     const b = to[bone] ?? ZERO;
-    result[bone] = [
-      a[0] + (b[0] - a[0]) * t,
-      a[1] + (b[1] - a[1]) * t,
-      a[2] + (b[2] - a[2]) * t,
-    ];
+    result[bone] = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
   }
   return result;
 }
@@ -176,6 +248,8 @@ class VrmRig implements DuelistRig {
   constructor(vrm: VRM) {
     this.vrm = vrm;
     this.object = vrm.scene;
+    // ステージの強い照明で白飛びしないよう、無照明マテリアルへ置き換える。
+    flattenVrmMaterials(vrm);
   }
 
   applyPose(pose: Pose, blend: number): void {
@@ -410,6 +484,8 @@ export class DuelistSet {
   private loadStarted = false;
   private disposed = false;
   private hasView = false;
+  private lastView: MatchView | null = null;
+  private previewChairValue: number | null = null;
   private cutsceneStart = 0;
   private resultStart = 0;
   private resultHit = false;
@@ -426,6 +502,11 @@ export class DuelistSet {
     return this.modeValue;
   }
 
+  /** デバッグ用: ファイナルサンダー中にプレビューしている椅子。 */
+  get previewChair(): number | null {
+    return this.previewChairValue;
+  }
+
   get cutsceneActive(): boolean {
     return this.cutsceneStart > 0;
   }
@@ -433,6 +514,7 @@ export class DuelistSet {
   setView(view: MatchView): void {
     this.ensureLoaded();
     this.hasView = true;
+    this.lastView = view;
 
     const attacker = this.attacker;
     attacker.setVisible(view.phase !== 'finished');
@@ -442,16 +524,21 @@ export class DuelistSet {
       this.lookAt.z - this.pedestalPosition.z,
     );
 
-    const chair = view.sittingChair;
-    const retired = chair !== null && view.retiredChairs.includes(chair);
-    if (chair !== null && !retired) {
-      const layout = chairLayout(chair);
-      this.defender.setVisible(true);
-      this.defender.root.position.set(layout.x, 0, layout.z);
-      this.defender.root.rotation.y = Math.atan2(-layout.x, -layout.z);
-    } else {
-      this.defender.setVisible(false);
-    }
+    // 実データが来たらローカルのプレビューは役目を終える。残しておくと
+    // 次の set フェーズ（sittingChair が null）で古い椅子に座り続けてしまう。
+    if (view.sittingChair !== null) this.previewChairValue = null;
+
+    this.syncDefender();
+  }
+
+  /**
+   * ファイナルサンダーの確認中、守備側のアバターを先に椅子へ座らせる。
+   * `null` でプレビューを消し、view があれば実データの座り位置へ戻す。
+   */
+  previewSitting(chair: number | null): void {
+    this.previewChairValue = chair !== null && Number.isFinite(chair) ? Math.round(chair) : null;
+    if (this.previewChairValue !== null) this.ensureLoaded();
+    this.syncDefender();
   }
 
   playFinalThunder(): void {
@@ -472,13 +559,16 @@ export class DuelistSet {
     this.attacker.setVisible(false);
     this.defender.setVisible(false);
     this.hasView = false;
+    this.lastView = null;
+    this.previewChairValue = null;
     this.cutsceneStart = 0;
     this.resultStart = 0;
     this.resultHit = false;
   }
 
   update(dt: number): void {
-    if (!this.hasView || this.disposed) return;
+    if (this.disposed) return;
+    if (!this.hasView && this.previewChairValue === null) return;
     const now = performance.now();
     const blend = Math.min(1, dt * 14);
     let attackerPose: Pose = STAND;
@@ -538,6 +628,29 @@ export class DuelistSet {
     this.disposed = true;
     this.attacker.dispose();
     this.defender.dispose();
+  }
+
+  /** view の実データとプレビューの優先順で守備側を配置する。 */
+  private syncDefender(): void {
+    const view = this.lastView;
+    const chair = view?.sittingChair ?? this.previewChairValue;
+    const retired = chair !== null && (view?.retiredChairs.includes(chair) ?? false);
+    if (chair === null || retired) {
+      this.defender.setVisible(false);
+      return;
+    }
+
+    const layout = chairLayout(chair);
+    const length = Math.hypot(layout.x, layout.z);
+    const inwardX = length > 1e-4 ? -layout.x / length : 0;
+    const inwardZ = length > 1e-4 ? -layout.z / length : -1;
+    this.defender.root.position.set(
+      layout.x + inwardX * SIT_SEAT_SHIFT,
+      SIT_LIFT,
+      layout.z + inwardZ * SIT_SEAT_SHIFT,
+    );
+    this.defender.root.rotation.y = Math.atan2(-layout.x, -layout.z);
+    this.defender.setVisible(true);
   }
 
   private ensureLoaded(): void {

@@ -18,6 +18,9 @@ export function resolveFinalThunderChoice(choice: FinalThunderChoice): 'advance'
   return choice === 'keep' ? 'advance' : 'reselect';
 }
 
+/** スライドアウトを見せてから hidden にするまでの待ち時間（CSS の ft-*-out と合わせる）。 */
+const CLOSE_ANIMATION_MS = 340;
+
 let instanceCount = 0;
 
 function formatChair(chair: number): string {
@@ -32,23 +35,27 @@ function requireElement<T extends Element>(root: ParentNode, selector: string): 
 }
 
 /**
- * 守備側が椅子を確定する直前の「FINAL THUNDER?」確認ダイアログ。
+ * 守備側が椅子を確定する直前の「FINAL THUNDER?」カットイン。
  *
- * 表示と選択だけを担当し、ゲーム状態・ネットワークには触れない。
+ * ゲーム画面は切り替えず、上寄りの横長バンドと下寄りの選択パネルだけを
+ * 右から左へスライド表示する。透明なフルスクリーンのバックドロップが
+ * ゲーム操作をブロックし、クリックで `'change'`（席を確定しない）になる。
+ *
  * `ask()` は「このまま行く」で `'keep'`、「席を変える」/Escape/背景クリック/
- * `cancel()`/`destroy()` で `'change'`（席を確定しない安全側）を返す。
+ * `cancel()`/`destroy()` で `'change'` を返す。
  */
 export class FinalThunderPrompt {
   readonly element: HTMLElement;
 
   private readonly options: FinalThunderPromptOptions;
-  private readonly panel: HTMLElement;
+  private readonly dialog: HTMLElement;
   private readonly chairNumber: HTMLElement;
   private readonly chairContainer: HTMLElement;
   private readonly playerLine: HTMLElement;
   private readonly changeButton: HTMLButtonElement;
   private readonly keepButton: HTMLButtonElement;
   private pendingResolve: ((choice: FinalThunderChoice) => void) | null = null;
+  private closeTimer: ReturnType<typeof setTimeout> | null = null;
   private isOpenState = false;
   private destroyed = false;
   private previousFocus: Element | null = null;
@@ -62,30 +69,41 @@ export class FinalThunderPrompt {
     this.element.hidden = true;
     this.element.innerHTML = `
       <div class="final-thunder__backdrop" data-final-thunder-backdrop aria-hidden="true"></div>
-      <div class="final-thunder__panel" role="dialog" aria-modal="true" aria-labelledby="${id}-title" aria-describedby="${id}-desc">
-        <p class="final-thunder__kicker">ELECTRIC CHAIR GAME</p>
-        <h2 class="final-thunder__title" id="${id}-title">FINAL THUNDER?</h2>
-        <p class="final-thunder__lead" id="${id}-desc">この椅子で決定しますか？</p>
-        <div class="final-thunder__chair" data-final-thunder-chair aria-label="CHAIR --">
-          <span class="final-thunder__chair-label">CHAIR</span>
-          <span class="final-thunder__chair-number">--</span>
+      <div class="final-thunder__stage" role="dialog" aria-modal="true" aria-labelledby="${id}-title" aria-describedby="${id}-desc">
+        <div class="final-thunder__band">
+          <span class="final-thunder__bolt final-thunder__bolt--lead" aria-hidden="true"></span>
+          <span class="final-thunder__bolt final-thunder__bolt--trail" aria-hidden="true"></span>
+          <span class="final-thunder__glitch" aria-hidden="true"></span>
+          <div class="final-thunder__band-inner">
+            <div class="final-thunder__headline">
+              <p class="final-thunder__kicker">ELECTRIC CHAIR GAME</p>
+              <h2 class="final-thunder__title" id="${id}-title">FINAL THUNDER?</h2>
+              <p class="final-thunder__player" hidden></p>
+            </div>
+            <div class="final-thunder__chair" data-final-thunder-chair aria-label="CHAIR --">
+              <span class="final-thunder__chair-label">CHAIR</span>
+              <span class="final-thunder__chair-number">--</span>
+            </div>
+          </div>
         </div>
-        <p class="final-thunder__player" hidden></p>
-        <div class="final-thunder__actions">
-          <button type="button" class="final-thunder__btn final-thunder__btn--change" id="${id}-change" data-choice="change">
-            <span class="final-thunder__btn-label">席を変える</span>
-            <span class="final-thunder__btn-sub">選び直す</span>
-          </button>
-          <button type="button" class="final-thunder__btn final-thunder__btn--keep" id="${id}-keep" data-choice="keep">
-            <span class="final-thunder__btn-label">このまま行く</span>
-            <span class="final-thunder__btn-sub">FINAL THUNDER / 確定</span>
-          </button>
+        <div class="final-thunder__panel">
+          <p class="final-thunder__lead" id="${id}-desc">この椅子で決定しますか？</p>
+          <div class="final-thunder__actions">
+            <button type="button" class="final-thunder__btn final-thunder__btn--change" id="${id}-change" data-choice="change">
+              <span class="final-thunder__btn-label">席を変える</span>
+              <span class="final-thunder__btn-sub">選び直す</span>
+            </button>
+            <button type="button" class="final-thunder__btn final-thunder__btn--keep" id="${id}-keep" data-choice="keep">
+              <span class="final-thunder__btn-label">このまま行く</span>
+              <span class="final-thunder__btn-sub">FINAL THUNDER / 確定</span>
+            </button>
+          </div>
+          <p class="final-thunder__note">席を変えると、もう一度椅子を選べます</p>
         </div>
-        <p class="final-thunder__note">席を変えると、もう一度椅子を選べます</p>
       </div>
     `;
 
-    this.panel = requireElement<HTMLElement>(this.element, '.final-thunder__panel');
+    this.dialog = requireElement<HTMLElement>(this.element, '[role="dialog"]');
     this.chairContainer = requireElement<HTMLElement>(this.element, '[data-final-thunder-chair]');
     this.chairNumber = requireElement<HTMLElement>(this.element, '.final-thunder__chair-number');
     this.playerLine = requireElement<HTMLElement>(this.element, '.final-thunder__player');
@@ -138,8 +156,9 @@ export class FinalThunderPrompt {
 
   destroy(): void {
     if (this.destroyed) return;
-    this.settle('change', false);
     this.destroyed = true;
+    this.settle('change', false);
+    this.clearCloseTimer();
     this.element.remove();
   }
 
@@ -150,8 +169,15 @@ export class FinalThunderPrompt {
   private show(): void {
     this.isOpenState = true;
     this.previousFocus = document.activeElement;
+    this.clearCloseTimer();
+
     this.element.hidden = false;
+    this.element.classList.remove('is-closing');
+    // 閉じかけ・再表示のどちらでも CSS アニメーションを最初から再生する。
+    this.element.classList.remove('is-open');
+    void this.element.offsetWidth;
     this.element.classList.add('is-open');
+
     document.addEventListener('keydown', this.handleKeyDown);
     this.changeButton.focus({ preventScroll: true });
     this.options.onOpen?.();
@@ -164,13 +190,31 @@ export class FinalThunderPrompt {
     const resolve = this.pendingResolve;
     this.pendingResolve = null;
 
+    // Promise とゲーム進行はすぐに解決し、見た目だけ左へスライドアウトさせる。
     this.element.classList.remove('is-open');
-    this.element.hidden = true;
+    this.element.classList.add('is-closing');
+    this.clearCloseTimer();
+    this.closeTimer = setTimeout(() => this.finishClose(), CLOSE_ANIMATION_MS);
+
     document.removeEventListener('keydown', this.handleKeyDown);
     this.restoreFocus();
 
     resolve?.(choice);
     if (notify) this.options.onClose?.(choice);
+  }
+
+  private finishClose(): void {
+    this.closeTimer = null;
+    // 閉じる途中で ask() し直された場合は、その表示を維持する。
+    if (this.isOpenState || this.destroyed) return;
+    this.element.classList.remove('is-closing');
+    this.element.hidden = true;
+  }
+
+  private clearCloseTimer(): void {
+    if (this.closeTimer === null) return;
+    clearTimeout(this.closeTimer);
+    this.closeTimer = null;
   }
 
   private restoreFocus(): void {
@@ -182,7 +226,7 @@ export class FinalThunderPrompt {
   }
 
   private focusableElements(): HTMLButtonElement[] {
-    return Array.from(this.panel.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
+    return Array.from(this.dialog.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
   }
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {

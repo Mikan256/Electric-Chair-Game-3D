@@ -168,6 +168,7 @@ export class App {
     if (event.key === 'Enter') {
       if (view.phase === 'result') {
         event.preventDefault();
+        if (!this.ui.canAdvanceResult) return;
         this.session?.advance();
         return;
       }
@@ -551,6 +552,8 @@ export class App {
     if (!view) return;
     this.ui.setLocalActionPending(true);
     this.theater.audio.play('click');
+    // ファイナルサンダーのカットイン中から、この椅子に座った姿を見せる。
+    this.theater.previewSitting(chair);
     const choice = await this.ui.askFinalThunder(chair, view.players[view.you].name);
     const current = this.session?.view;
     if (!current) return;
@@ -559,6 +562,7 @@ export class App {
       return;
     }
     if (choice === 'change') {
+      this.theater.previewSitting(null);
       this.ui.setLocalActionPending(false);
       this.ui.setPendingChair(null);
       this.theater.setSelected(null);
@@ -574,6 +578,7 @@ export class App {
     if (!this.session) return;
     const result = this.session.chooseChair(chair);
     if (!result.ok) {
+      this.theater.previewSitting(null);
       this.ui.showToast(result.message ?? '選択できません');
       return;
     }

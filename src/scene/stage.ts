@@ -9,6 +9,7 @@ import { AssetLibrary, type LoadProgress } from './assets';
 import { AudioManager } from './audio';
 import type { AvatarInstance } from './avatar';
 import { ChairActor, chairLayout, STAGE_RADIUS } from './chair';
+import { CinematicCamera } from './cinematic-camera';
 import { DuelistSet } from './duelists';
 import { Effects } from './effects';
 import { MatchMonitor, type MonitorRow } from './match-monitor';
@@ -126,6 +127,7 @@ export class Theater {
   private readonly orbit: RoomOrbitCamera;
   private readonly monitor: MatchMonitor;
   private readonly duelists: DuelistSet;
+  private readonly cinematic: CinematicCamera;
   private readonly composer: EffectComposer;
   private readonly bloom: UnrealBloomPass;
   private readonly effects: Effects;
@@ -188,6 +190,11 @@ export class Theater {
       pedestalPosition: new THREE.Vector3(1.35, PLATFORM.height, 9.35),
       lookAt: new THREE.Vector3(0, 1.15, 8.2),
       platformY: PLATFORM.height,
+    });
+    this.cinematic = new CinematicCamera({
+      camera: this.camera,
+      controls: this.orbit.controls,
+      bounds: CAMERA_BOUNDS,
     });
 
     this.composer = new EffectComposer(this.renderer);
@@ -593,9 +600,23 @@ export class Theater {
     if (view.phase === 'press' && this.lastDuelistPhase !== 'press') {
       this.duelists.playFinalThunder();
       this.effects.floatText(new THREE.Vector3(0, 0.2, 7.0), 'FINAL THUNDER', '#ffd166', 0.45);
+      this.cinematic.pressShot(
+        new THREE.Vector3(0, PLATFORM.height, PEDESTAL_Z),
+        new THREE.Vector3(1.35, PLATFORM.height, 9.35),
+      );
     }
     if (view.phase === 'result' && view.lastResult && this.lastDuelistPhase !== 'result') {
       this.duelists.playResult(view.lastResult.hit);
+      if (view.lastResult.hit && view.sittingChair !== null) {
+        const layout = chairLayout(view.sittingChair);
+        this.cinematic.shockShot(new THREE.Vector3(layout.x, 0, layout.z));
+      }
+    }
+    if (this.lastDuelistPhase !== null && this.lastDuelistPhase !== 'set' && view.phase === 'set') {
+      this.cinematic.restore();
+    }
+    if (view.phase === 'finished' && this.lastDuelistPhase !== 'finished') {
+      this.cinematic.restore();
     }
     this.lastDuelistPhase = view.phase;
     this.setFloorNumberState(view);
@@ -672,6 +693,7 @@ export class Theater {
     this.setButtonActive(false);
     this.monitor.update(null);
     this.duelists.reset();
+    this.cinematic.reset();
     this.lastDuelistPhase = null;
     for (const chair of this.chairs.values()) {
       chair.reset();
@@ -695,6 +717,7 @@ export class Theater {
     const portrait = this.camera.aspect < 0.9;
     if (portrait !== this.portrait) {
       this.portrait = portrait;
+      this.cinematic.reset();
       this.orbit.setConfig(portrait ? PORTRAIT_CAMERA : LANDSCAPE_CAMERA, { reset: true });
     }
 
@@ -787,7 +810,9 @@ export class Theater {
     const dt = Math.min(0.05, this.clock.getDelta());
     const elapsed = this.clock.elapsedTime;
 
-    this.orbit.update();
+    const now = performance.now();
+    this.cinematic.update(now);
+    if (!this.cinematic.active) this.orbit.update();
     this.updateHover();
     this.duelists.update(dt);
     this.effects.update(dt);
@@ -826,6 +851,11 @@ export class Theater {
     return this.monitor.rows;
   }
 
+  /** 守備側の着席プレビュー（ファイナルサンダー中）。 */
+  previewSitting(chair: number | null): void {
+    this.duelists.previewSitting(chair);
+  }
+
   /** E2E/デバッグ用: アバターが VRM かプリミティブか。 */
   get avatarMode(): 'primitive' | 'vrm' {
     return this.duelists.mode;
@@ -844,6 +874,7 @@ export class Theater {
     this.monitor.mesh.removeFromParent();
     this.monitor.dispose();
     this.duelists.dispose();
+    this.cinematic.reset();
     this.orbit.dispose();
     this.effects.dispose();
     this.audio.dispose();
