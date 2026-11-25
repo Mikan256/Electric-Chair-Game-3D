@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
@@ -11,6 +10,8 @@ import { AudioManager } from './audio';
 import type { AvatarInstance } from './avatar';
 import { ChairActor, chairLayout, STAGE_RADIUS } from './chair';
 import { Effects } from './effects';
+import { MatchMonitor, type MonitorRow } from './match-monitor';
+import { RoomOrbitCamera, type RoomOrbitConfig } from './orbit-camera';
 
 export interface TheaterCallbacks {
   onChairHover?: (chair: number | null) => void;
@@ -23,46 +24,75 @@ export interface BuildOptions {
 }
 
 /**
- * カメラの可動域。部屋の外（背景の虚空）が写り込まないよう、
- * 方位角・仰角・距離をすべて部屋の内側に収まる範囲へ制限する。
+ * 部屋の内側の寸法。360° カメラで見回しても壁の外（背景の虚空）が
+ * 映り込まないよう、椅子の円とカメラの可動域より十分広く取る。
  */
-interface CameraRig {
-  fov: number;
-  position: readonly [number, number, number];
-  target: readonly [number, number, number];
-  minDistance: number;
-  maxDistance: number;
-  minPolarAngle: number;
-  maxPolarAngle: number;
-  maxAzimuthAngle: number;
-  /** 待機中に首振りする角度（ラジアン）。maxAzimuthAngle より小さくする。 */
-  swayLimit: number;
-}
+const ROOM = {
+  halfWidth: 14,
+  backZ: -13.5,
+  frontZ: 35,
+  wallHeight: 20,
+  floorWidth: 34,
+  floorDepth: 54,
+  floorCenterZ: 10.75,
+} as const;
 
-// 横長画面: 客席側から少し見下ろす固定気味のカメラ。部屋の奥行きに収める。
-const LANDSCAPE_CAMERA: CameraRig = {
-  fov: 44,
-  position: [0, 8.8, 19.6],
-  target: [0, 0.15, 0],
-  minDistance: 15,
-  maxDistance: 24,
-  minPolarAngle: 1.13,
-  maxPolarAngle: 1.3,
-  maxAzimuthAngle: 0.4,
-  swayLimit: 0.22,
+/**
+ * 前方の黒い平たい台。12番椅子の正面、円形フロアの外側に置く。
+ * 装飾は載せず、台座（buildPedestal）の土台としてだけ使う。
+ */
+const PLATFORM = {
+  width: 9,
+  height: 0.4,
+  depth: 1.4,
+  z: 8.2,
+} as const;
+
+/** 奥壁中央の横長モニター。統合側は monitorAnchor に画面を差し込む。 */
+const MONITOR = {
+  width: 22,
+  height: 11,
+  y: 6,
+  frameDepth: 0.22,
+} as const;
+
+/** カメラが入ってよい部屋の内側（壁から 0.55 離す）。 */
+const CAMERA_BOUNDS = {
+  minX: -ROOM.halfWidth + 0.55,
+  maxX: ROOM.halfWidth - 0.55,
+  minZ: ROOM.backZ + 0.55,
+  maxZ: ROOM.frontZ - 0.55,
+  minY: 1.15,
+  maxY: 11.5,
+} as const;
+
+// 横長画面: 360° 回せるが、常に部屋の内側に収まる。
+// 後方モニターと前方の台座の両方が縦に収まるよう、やや広角で見下ろす。
+const LANDSCAPE_CAMERA: RoomOrbitConfig = {
+  fov: 60,
+  target: [0, 0.55, 0.7],
+  minDistance: 6.5,
+  maxDistance: 15.5,
+  minPolarAngle: 1.05,
+  maxPolarAngle: 1.42,
+  bounds: CAMERA_BOUNDS,
+  margin: 0.55,
+  defaultAzimuth: 0,
+  defaultPolar: 1.34,
 };
 
-// 縦長画面: 12脚すべてが横幅に収まるよう引いた位置から見る。
-const PORTRAIT_CAMERA: CameraRig = {
-  fov: 58,
-  position: [0, 9.2, 26.5],
-  target: [0, 0.15, 0],
-  minDistance: 23,
-  maxDistance: 30,
-  minPolarAngle: 1.22,
-  maxPolarAngle: 1.34,
-  maxAzimuthAngle: 0.3,
-  swayLimit: 0.16,
+// 縦長画面: 12脚が横幅に収まるよう広角にする。
+const PORTRAIT_CAMERA: RoomOrbitConfig = {
+  fov: 104,
+  target: [0, 0.55, 0.7],
+  minDistance: 8.5,
+  maxDistance: 16,
+  minPolarAngle: 1.08,
+  maxPolarAngle: 1.42,
+  bounds: CAMERA_BOUNDS,
+  margin: 0.55,
+  defaultAzimuth: 0,
+  defaultPolar: 1.3,
 };
 
 /**
@@ -75,11 +105,17 @@ export class Theater {
   readonly renderer: THREE.WebGLRenderer;
   readonly audio = new AudioManager();
   readonly chairs = new Map<number, ChairActor>();
+  /**
+   * 後方モニターのスクリーン位置。統合側が CanvasTexture を貼った Plane を
+   * ここへ add する。ローカル原点が画面中央、+Z が部屋の内側を向く。
+   */
+  readonly monitorAnchor = new THREE.Group();
 
   private readonly canvas: HTMLCanvasElement;
   private readonly assets = new AssetLibrary();
   private readonly debugParams = new URLSearchParams(window.location.search);
-  private readonly controls: OrbitControls;
+  private readonly orbit: RoomOrbitCamera;
+  private readonly monitor: MatchMonitor;
   private readonly composer: EffectComposer;
   private readonly bloom: UnrealBloomPass;
   private readonly effects: Effects;
@@ -109,8 +145,7 @@ export class Theater {
   private avatarsVisible = true;
   private avatarsLoading: Promise<void> | null = null;
   private portrait: boolean | null = null;
-  private idle = true;
-  private swayDirection: 1 | -1 = 1;
+  private pointerDown: { x: number; y: number; time: number } | null = null;
 
   constructor(canvas: HTMLCanvasElement, callbacks: TheaterCallbacks = {}) {
     this.canvas = canvas;
@@ -126,19 +161,17 @@ export class Theater {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.72;
 
-    this.camera = new THREE.PerspectiveCamera(LANDSCAPE_CAMERA.fov, 1, 0.1, 140);
-    this.camera.position.set(...LANDSCAPE_CAMERA.position);
-
-    this.controls = new OrbitControls(this.camera, canvas);
-    this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.06;
-    this.controls.enablePan = false;
-    this.controls.autoRotateSpeed = 0.6;
+    this.camera = new THREE.PerspectiveCamera(LANDSCAPE_CAMERA.fov, 1, 0.1, 180);
+    this.orbit = new RoomOrbitCamera(this.camera, canvas, LANDSCAPE_CAMERA);
 
     this.scene.fog = new THREE.FogExp2(0x04040a, 0.012);
     this.scene.background = new THREE.Color(0x030307);
 
     this.buildEnvironment();
+
+    this.monitor = new MatchMonitor({ worldWidth: 20.8, worldHeight: 10.4 });
+    this.monitorAnchor.add(this.monitor.mesh);
+    this.monitor.update(null);
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
@@ -156,6 +189,8 @@ export class Theater {
     canvas.addEventListener('pointermove', this.onPointerMove);
     canvas.addEventListener('pointerleave', this.onPointerLeave);
     canvas.addEventListener('pointerdown', this.onPointerDown);
+    canvas.addEventListener('pointerup', this.onPointerUp);
+    canvas.addEventListener('pointercancel', this.onPointerCancel);
 
     if (import.meta.env.DEV) {
       (window as unknown as { __stage?: Theater }).__stage = this;
@@ -225,8 +260,11 @@ export class Theater {
 
     // 部屋の床。カメラ側まで床を伸ばし、足元に虚空が見えないようにする。
     if (this.debugParams.get('floor') !== 'off') {
-      const floor = new THREE.Mesh(new THREE.BoxGeometry(30, 0.2, 51), roomDark);
-      floor.position.set(0, -0.1, 11);
+      const floor = new THREE.Mesh(
+        new THREE.BoxGeometry(ROOM.floorWidth, 0.2, ROOM.floorDepth),
+        roomDark,
+      );
+      floor.position.set(0, -0.1, ROOM.floorCenterZ);
       this.scene.add(floor);
     }
 
@@ -249,146 +287,91 @@ export class Theater {
     floorRing.position.y = 0.035;
     this.scene.add(floorRing);
 
-    // 奥の壁と左右の壁。カメラ側にも壁を回して完全な箱にする。
-    // 壁はカメラの可動域より十分高くし、見上げても空（背景）が出ないようにする。
-    const backWall = new THREE.Mesh(new THREE.BoxGeometry(30, 20, 0.35), wallMaterial);
-    backWall.position.set(0, 10, -11.3);
+    // 奥の壁と左右の壁。360° カメラで見回しても虚空が映らないよう、
+    // 椅子の円とカメラの可動域の外側まで部屋を広げる。
+    const wallDepth = 0.35;
+    const wallHeight = ROOM.wallHeight;
+    const backWall = new THREE.Mesh(
+      new THREE.BoxGeometry(ROOM.halfWidth * 2 + wallDepth, wallHeight, wallDepth),
+      wallMaterial,
+    );
+    backWall.position.set(0, wallHeight / 2, ROOM.backZ);
     this.scene.add(backWall);
 
-    for (const x of [-12.4, 12.4] as const) {
-      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.35, 20, 48), wallMaterial);
-      sideWall.position.set(x, 10, 10.9);
+    for (const x of [-ROOM.halfWidth, ROOM.halfWidth] as const) {
+      const sideWall = new THREE.Mesh(
+        new THREE.BoxGeometry(wallDepth, wallHeight, ROOM.frontZ - ROOM.backZ),
+        wallMaterial,
+      );
+      sideWall.position.set(x, wallHeight / 2, (ROOM.frontZ + ROOM.backZ) / 2);
       this.scene.add(sideWall);
     }
 
     // カメラの背後を塞ぐ壁。可動域の外なので通常は見えないが、
     // ワイドな画面や揺れでも外側が映り込まないための保険。
-    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(30, 20, 0.35), wallMaterial);
-    frontWall.position.set(0, 10, 35);
+    const frontWall = new THREE.Mesh(
+      new THREE.BoxGeometry(ROOM.halfWidth * 2 + wallDepth, wallHeight, wallDepth),
+      wallMaterial,
+    );
+    frontWall.position.set(0, wallHeight / 2, ROOM.frontZ);
     this.scene.add(frontWall);
 
-    // 奥壁のフレームとロゴ。
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(7.4, 3.6, 0.18), trimMaterial);
-    frame.position.set(0, 3.9, -11.05);
-    this.scene.add(frame);
-
-    // 壁の縦ラインと床の縁を強調する。
+    // 壁の縦ライン。奥壁のストリップはモニターの左右へ逃がし、
+    // 画面を横切らない位置にだけ置く。
     const stripMaterial = new THREE.MeshBasicMaterial({
       color: 0xf3e3bf,
       transparent: true,
       opacity: 0.55,
       toneMapped: false,
     });
-    for (const x of [-12.18, 12.18] as const) {
-      for (const z of [-9, -5, -1, 3, 7]) {
-        const strip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 6.2, 0.3), stripMaterial);
+    const backInnerZ = ROOM.backZ + wallDepth / 2;
+    const backStripGeometry = new THREE.BoxGeometry(0.04, 6.2, 0.12);
+    for (const x of [-12.4, 12.4] as const) {
+      const strip = new THREE.Mesh(backStripGeometry, stripMaterial);
+      strip.position.set(x, MONITOR.y, backInnerZ + 0.06);
+      this.scene.add(strip);
+    }
+
+    const sideStripGeometry = new THREE.BoxGeometry(0.04, 6.2, 0.3);
+    for (const x of [-ROOM.halfWidth + 0.2, ROOM.halfWidth - 0.2] as const) {
+      for (const z of [-11, -5, 1, 7, 13, 19, 25]) {
+        const strip = new THREE.Mesh(sideStripGeometry, stripMaterial);
         strip.position.set(x, 4, z);
         this.scene.add(strip);
       }
     }
 
-    // 前方ステージ（段差）を作る。椅子の円の外側、12番の正面。
-    const platform = new THREE.Mesh(new THREE.BoxGeometry(8.6, 0.56, 1.6), trimMaterial);
-    platform.position.set(0, 0.28, 7.7);
+    // 奥壁中央の横長モニター。ここでは「器」だけを作り、
+    // 試合内容の描画は統合側が monitorAnchor へ差し込む。
+    const monitorFrame = new THREE.Mesh(
+      new THREE.BoxGeometry(MONITOR.width, MONITOR.height, MONITOR.frameDepth),
+      trimMaterial,
+    );
+    monitorFrame.position.set(0, MONITOR.y, backInnerZ + MONITOR.frameDepth / 2);
+    this.scene.add(monitorFrame);
+
+    const screen = new THREE.Mesh(
+      new THREE.PlaneGeometry(MONITOR.width - 0.6, MONITOR.height - 0.6),
+      new THREE.MeshBasicMaterial({ color: 0x080a12 }),
+    );
+    screen.position.set(0, MONITOR.y, backInnerZ + MONITOR.frameDepth + 0.005);
+    this.scene.add(screen);
+
+    this.monitorAnchor.position.set(0, MONITOR.y, backInnerZ + MONITOR.frameDepth + 0.02);
+    this.scene.add(this.monitorAnchor);
+
+    // 前方の黒い平たい台。装飾は置かず、台座の土台としてだけ存在させる。
+    const platformMaterial = new THREE.MeshStandardMaterial({
+      color: 0x0b0b0f,
+      metalness: 0.16,
+      roughness: 0.74,
+    });
+    const platform = new THREE.Mesh(
+      new THREE.BoxGeometry(PLATFORM.width, PLATFORM.height, PLATFORM.depth),
+      platformMaterial,
+    );
+    platform.position.set(0, PLATFORM.height / 2, PLATFORM.z);
     this.scene.add(platform);
-
-    const carpet = new THREE.Mesh(
-      new THREE.BoxGeometry(3.4, 0.025, 2.0),
-      new THREE.MeshStandardMaterial({ color: 0x3a0b12, roughness: 0.85, metalness: 0.05 }),
-    );
-    carpet.position.set(0, 0.575, 7.7);
-    this.scene.add(carpet);
-
-    const stepMaterial = new THREE.MeshStandardMaterial({
-      color: 0x1b1b25,
-      metalness: 0.55,
-      roughness: 0.38,
-    });
-    const step1 = new THREE.Mesh(new THREE.BoxGeometry(9.6, 0.42, 0.6), stepMaterial);
-    step1.position.set(0, 0.21, 8.8);
-    this.scene.add(step1);
-
-    const step2 = new THREE.Mesh(new THREE.BoxGeometry(10.6, 0.28, 0.6), stepMaterial);
-    step2.position.set(0, 0.14, 9.4);
-    this.scene.add(step2);
-
-    const stepCarpetMaterial = new THREE.MeshStandardMaterial({
-      color: 0x2d0a10,
-      roughness: 0.9,
-      metalness: 0.02,
-    });
-    for (const [z, width] of [
-      [8.8, 9.3],
-      [9.4, 10.3],
-    ] as const) {
-      const stepCarpet = new THREE.Mesh(
-        new THREE.BoxGeometry(width, 0.015, 0.62),
-        stepCarpetMaterial,
-      );
-      stepCarpet.position.set(0, z === 8.8 ? 0.43 : 0.29, z);
-      this.scene.add(stepCarpet);
-    }
-
-    const stepLight = new THREE.PointLight(0xffd9a0, 12, 8, 2);
-    stepLight.position.set(0, 1.5, 9.4);
-    this.scene.add(stepLight);
-
-    const edgeMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffe2a6,
-      transparent: true,
-      opacity: 0.45,
-      blending: THREE.AdditiveBlending,
-      toneMapped: false,
-    });
-    const riserFace = new THREE.Mesh(
-      new THREE.BoxGeometry(8.3, 0.5, 0.04),
-      new THREE.MeshStandardMaterial({ color: 0x2a1118, metalness: 0.4, roughness: 0.5 }),
-    );
-    riserFace.position.set(0, 0.29, 8.52);
-    this.scene.add(riserFace);
-
-    for (const x of [-4.28, 4.28] as const) {
-      const side = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.5, 2.25), edgeMaterial);
-      side.position.set(x, 0.3, 7.7);
-      this.scene.add(side);
-    }
-
-    for (const [y, z, width] of [
-      [0.565, 6.92, 8.6],
-      [0.425, 8.52, 9.6],
-      [0.285, 9.12, 10.6],
-      [0.425, 9.12, 9.6],
-      [0.285, 9.72, 10.6],
-    ] as const) {
-      const edge = new THREE.Mesh(new THREE.BoxGeometry(width, 0.025, 0.035), edgeMaterial);
-      edge.position.set(0, y, z);
-      this.scene.add(edge);
-    }
-
-    // 奥壁のパネルラインとリング。暗い壁に奥行きを作る。
-    for (const x of [-8, -4, 0, 4, 8]) {
-      const strip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 6.2, 0.12), stripMaterial);
-      strip.position.set(x, 3.8, -11.05);
-      this.scene.add(strip);
-    }
-    const backRing = new THREE.Mesh(
-      new THREE.TorusGeometry(3.7, 0.035, 8, 96),
-      new THREE.MeshBasicMaterial({
-        color: 0xffd98a,
-        transparent: true,
-        opacity: 0.45,
-        blending: THREE.AdditiveBlending,
-        toneMapped: false,
-      }),
-    );
-    backRing.position.set(0, 3.6, -11.02);
-    this.scene.add(backRing);
-
-    for (const x of [-4.25, 4.25] as const) {
-      const riser = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5, 0.04), edgeMaterial);
-      riser.position.set(x, 0.3, 6.92);
-      this.scene.add(riser);
-    }
 
     // 奥の照明トラス。天井は設けず、上から吊るしたバーでスタジオ感を出す。
     const trussMaterial = new THREE.MeshStandardMaterial({
@@ -397,8 +380,8 @@ export class Theater {
       roughness: 0.4,
     });
     for (const z of [-2.5, 4.5]) {
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(20, 0.18, 0.18), trussMaterial);
-      bar.position.set(0, 6.9, z);
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(22, 0.18, 0.18), trussMaterial);
+      bar.position.set(0, 12.4, z);
       this.scene.add(bar);
       for (const x of [-7, -2.5, 2.5, 7]) {
         const lamp = new THREE.Mesh(
@@ -409,14 +392,14 @@ export class Theater {
             roughness: 0.3,
           }),
         );
-        lamp.position.set(x, 6.65, z);
+        lamp.position.set(x, 12.15, z);
         lamp.rotation.x = Math.PI;
         this.scene.add(lamp);
         const bulb = new THREE.Mesh(
           new THREE.SphereGeometry(0.075, 10, 8),
           new THREE.MeshBasicMaterial({ color: 0xfff3d0, toneMapped: false }),
         );
-        bulb.position.set(x, 6.52, z);
+        bulb.position.set(x, 12.02, z);
         this.scene.add(bulb);
       }
     }
@@ -429,8 +412,8 @@ export class Theater {
     // 「部屋の内側にいる」ことが分かる程度の反射だけを残す。
     const wallWashes: Array<[number, number, number, number, number]> = [
       [0, 6.5, -7.5, 9, 18],
-      [-10.6, 5.5, 2.5, 7, 15],
-      [10.6, 5.5, 2.5, 7, 15],
+      [-12, 5.5, 2.5, 7, 15],
+      [12, 5.5, 2.5, 7, 15],
     ];
     for (const [x, y, z, intensity, distance] of wallWashes) {
       const sideWash = new THREE.PointLight(0x8b93b0, intensity, distance, 2);
@@ -442,7 +425,8 @@ export class Theater {
   private buildPedestal(): void {
     if (this.debugParams.get('pedestal') === 'off') return;
     const group = new THREE.Group();
-    group.position.set(-1.8, 0.56, 7.8);
+    // 台の中心に置き、台座の底面が台の上面にぴったり乗る高さにする。
+    group.position.set(0, PLATFORM.height, PLATFORM.z);
 
     const black = new THREE.MeshStandardMaterial({
       color: 0x0a0a0e,
@@ -577,8 +561,7 @@ export class Theater {
   }
 
   setIdle(idle: boolean): void {
-    this.idle = idle;
-    if (!idle) this.controls.autoRotate = false;
+    this.orbit.setAutoRotate(idle, idle ? 0.45 : 0);
   }
 
   setButtonActive(active: boolean): void {
@@ -601,6 +584,7 @@ export class Theater {
   }
 
   applyView(view: MatchView): void {
+    this.monitor.update(view);
     this.setFloorNumberState(view);
     this.retiredChairs.clear();
     for (const chair of view.retiredChairs) this.retiredChairs.add(chair);
@@ -673,6 +657,7 @@ export class Theater {
     this.lastResultTurn = -1;
     this.confettiPlayed = false;
     this.setButtonActive(false);
+    this.monitor.update(null);
     for (const chair of this.chairs.values()) {
       chair.reset();
       if (chair.group.parent !== this.scene) this.scene.add(chair.group);
@@ -695,31 +680,20 @@ export class Theater {
     const portrait = this.camera.aspect < 0.9;
     if (portrait !== this.portrait) {
       this.portrait = portrait;
-      this.applyCameraRig(portrait ? PORTRAIT_CAMERA : LANDSCAPE_CAMERA);
+      this.orbit.setConfig(portrait ? PORTRAIT_CAMERA : LANDSCAPE_CAMERA, { reset: true });
     }
 
     this.camera.updateProjectionMatrix();
   };
 
-  /** 画面比率ごとのカメラ可動域を適用する。 */
-  private applyCameraRig(rig: CameraRig): void {
-    this.camera.fov = rig.fov;
-    this.camera.position.set(...rig.position);
-    this.controls.target.set(...rig.target);
-    this.controls.minDistance = rig.minDistance;
-    this.controls.maxDistance = rig.maxDistance;
-    this.controls.minPolarAngle = rig.minPolarAngle;
-    this.controls.maxPolarAngle = rig.maxPolarAngle;
-    // 部屋の正面から外れて壁の裏側を見ないよう、首振りを正面付近に固定する。
-    this.controls.minAzimuthAngle = -rig.maxAzimuthAngle;
-    this.controls.maxAzimuthAngle = rig.maxAzimuthAngle;
-    this.controls.update();
-  }
-
-  private onPointerMove = (event: PointerEvent): void => {
+  private setPointer(event: PointerEvent): void {
     const rect = this.canvas.getBoundingClientRect();
     this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  }
+
+  private onPointerMove = (event: PointerEvent): void => {
+    this.setPointer(event);
     this.updateHover();
   };
 
@@ -730,14 +704,32 @@ export class Theater {
 
   private onPointerDown = (event: PointerEvent): void => {
     if (event.button !== 0) return;
-    const rect = this.canvas.getBoundingClientRect();
-    this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    this.pointerDown = {
+      x: event.clientX,
+      y: event.clientY,
+      time: performance.now(),
+    };
+    this.setPointer(event);
+    this.updateHover();
+  };
+
+  private onPointerUp = (event: PointerEvent): void => {
+    const down = this.pointerDown;
+    this.pointerDown = null;
+    if (!down || event.button !== 0) return;
+    // ドラッグでカメラを回したときは椅子を選ばない（クリックだけを拾う）。
+    const moved = Math.hypot(event.clientX - down.x, event.clientY - down.y);
+    if (moved > 7 || performance.now() - down.time > 700) return;
+    this.setPointer(event);
     this.updateHover();
     if (!this.enabled || !this.hovered) return;
     if (this.hovered.getState() === 'available' || this.hovered.getState() === 'hover') {
       this.callbacks.onChairPick?.(this.hovered.chair);
     }
+  };
+
+  private onPointerCancel = (): void => {
+    this.pointerDown = null;
   };
 
   private updateHover(): void {
@@ -774,31 +766,13 @@ export class Theater {
     this.callbacks.onChairHover?.(null);
   }
 
-  /**
-   * 待機中は 360° 回り続けず、正面の狭い範囲でゆっくり首を振る。
-   * 真後ろや壁の外側を映さないための制約でもある。
-   */
-  private updateIdleSway(): void {
-    if (!this.idle) return;
-    const offset = this.camera.position.clone().sub(this.controls.target);
-    const theta = Math.atan2(offset.x, offset.z);
-    const rig = this.portrait ? PORTRAIT_CAMERA : LANDSCAPE_CAMERA;
-    if (theta > rig.swayLimit) this.swayDirection = 1;
-    else if (theta < -rig.swayLimit) this.swayDirection = -1;
-    this.controls.autoRotate = true;
-    // OrbitControls は damping 有効時に実効速度が約 1/16 になるため、
-    // 見た目で分かる程度まで数値を上げている。
-    this.controls.autoRotateSpeed = 7 * this.swayDirection;
-  }
-
   private animate = (): void => {
     if (this.disposed) return;
     this.animationHandle = requestAnimationFrame(this.animate);
     const dt = Math.min(0.05, this.clock.getDelta());
     const elapsed = this.clock.elapsedTime;
 
-    this.updateIdleSway();
-    this.controls.update();
+    this.orbit.update();
     this.updateHover();
     this.effects.update(dt);
     for (const chair of this.chairs.values()) chair.update(dt, elapsed);
@@ -826,6 +800,16 @@ export class Theater {
     this.camera.position.copy(original);
   };
 
+  /** E2E/デバッグ用: 現在のカメラ方位角（ラジアン）。 */
+  get cameraAzimuth(): number {
+    return this.orbit.azimuth;
+  }
+
+  /** E2E/デバッグ用: 直近にモニターへ描画した行。 */
+  get monitorRows(): readonly MonitorRow[] {
+    return this.monitor.rows;
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -834,7 +818,11 @@ export class Theater {
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
     this.canvas.removeEventListener('pointerleave', this.onPointerLeave);
     this.canvas.removeEventListener('pointerdown', this.onPointerDown);
-    this.controls.dispose();
+    this.canvas.removeEventListener('pointerup', this.onPointerUp);
+    this.canvas.removeEventListener('pointercancel', this.onPointerCancel);
+    this.monitor.mesh.removeFromParent();
+    this.monitor.dispose();
+    this.orbit.dispose();
     this.effects.dispose();
     this.audio.dispose();
     this.composer.dispose();
