@@ -173,6 +173,7 @@ export class App {
       }
       if (view.phase === 'press' && isAttacker) {
         event.preventDefault();
+        if (!this.ui.canPressNow) return;
         this.pressButton();
         return;
       }

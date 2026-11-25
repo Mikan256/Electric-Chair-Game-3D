@@ -1,4 +1,5 @@
 import { createRng } from '@/game/rng';
+import { FINAL_THUNDER_CUTSCENE_MS } from '@/game/timing';
 import type { MatchSession } from '@/net/session';
 
 export interface BotOptions {
@@ -57,7 +58,11 @@ export function attachBot(session: MatchSession, options: BotOptions = {}): () =
       act();
       return;
     }
-    timer = setTimeout(act, delayMs);
+    const wait =
+      session.view?.phase === 'press'
+        ? Math.max(delayMs, FINAL_THUNDER_CUTSCENE_MS + 80)
+        : delayMs;
+    timer = setTimeout(act, wait);
   };
 
   const unsubscribeView = session.on('view', (view) => {

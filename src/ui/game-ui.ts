@@ -1,4 +1,5 @@
 import { assetUrl, ASSETS } from '@/assets/registry';
+import { FINAL_THUNDER_CUTSCENE_MS } from '@/game/timing';
 import type { MatchView } from '@/game/types';
 import { FinalThunderPrompt, type FinalThunderChoice } from './final-thunder';
 import { RoomEntry } from './room-entry';
@@ -110,6 +111,8 @@ export class GameUI {
   private chairDrawer: HTMLElement | null = null;
   private gridToggle: HTMLButtonElement | null = null;
   private localActionPending = false;
+  private pressUnlockAt = 0;
+  private pressUnlockTimer: ReturnType<typeof setTimeout> | null = null;
   private resultRenderedTurn = -1;
   private winnerRenderedKey = '';
   private scoreSubmitted = false;
@@ -227,6 +230,11 @@ export class GameUI {
   ): void {
     this.clearCutIns();
     this.clearRoundCall();
+    if (this.pressUnlockTimer !== null) {
+      clearTimeout(this.pressUnlockTimer);
+      this.pressUnlockTimer = null;
+    }
+    this.pressUnlockAt = 0;
     this.destroyRoomEntry();
     this.finalThunder.cancel();
     this.hud = null;
@@ -513,6 +521,11 @@ export class GameUI {
     this.gridToggle = this.screenHost.querySelector('#btn-grid');
     this.resultOverlay = null;
     this.winnerOverlay = null;
+    this.pressUnlockAt = 0;
+    if (this.pressUnlockTimer !== null) {
+      clearTimeout(this.pressUnlockTimer);
+      this.pressUnlockTimer = null;
+    }
 
     this.confirmButton?.addEventListener('click', () => {
       if (this.pendingChair === null) return;
@@ -589,6 +602,14 @@ export class GameUI {
       this.pendingChair = null;
       this.localActionPending = false;
     }
+    if (phaseChanged && view.phase === 'press') {
+      this.pressUnlockAt = performance.now() + FINAL_THUNDER_CUTSCENE_MS;
+      if (this.pressUnlockTimer !== null) clearTimeout(this.pressUnlockTimer);
+      this.pressUnlockTimer = setTimeout(() => {
+        this.pressUnlockTimer = null;
+        if (this.currentView) this.updateView(this.currentView);
+      }, FINAL_THUNDER_CUTSCENE_MS + 40);
+    }
     this.lastPhase = view.phase;
     if (view.phase === 'set' && view.wiredCommitted) this.pendingChair = null;
     if (view.phase === 'sit' && view.sittingChair !== null) this.pendingChair = null;
@@ -597,7 +618,9 @@ export class GameUI {
       view.phase === 'set' && isAttacker && !view.wiredCommitted && !this.localActionPending;
     const canSit =
       view.phase === 'sit' && isDefender && view.sittingChair === null && !this.localActionPending;
-    const canPress = view.phase === 'press' && isAttacker && !this.localActionPending;
+    const pressLocked = view.phase === 'press' && performance.now() < this.pressUnlockAt;
+    const showPress = view.phase === 'press' && isAttacker && !this.localActionPending;
+    const canPress = showPress && !pressLocked;
     const canChoose = canSet || canSit;
 
     if (this.hintEl) {
@@ -615,7 +638,9 @@ export class GameUI {
           : '守備側が椅子を選んでいます…';
       } else if (view.phase === 'press') {
         this.hintEl.textContent = isAttacker
-          ? '前方の台座のボタンを押せ'
+          ? performance.now() < this.pressUnlockAt
+            ? 'FINAL THUNDER…'
+            : '前方の台座のボタンを押せ'
           : `あなたは ${view.sittingChair ?? '?'}番。相手がボタンを押すのを待っています…`;
       } else if (view.phase === 'result') {
         const result = view.lastResult;
@@ -646,7 +671,11 @@ export class GameUI {
             : '座る椅子を選択'
           : '守備側の着席待ち…';
       } else if (view.phase === 'press') {
-        this.statusEl.textContent = isAttacker ? 'ボタンを押してください' : '相手のボタン待ち…';
+        this.statusEl.textContent = isAttacker
+          ? performance.now() < this.pressUnlockAt
+            ? 'FINAL THUNDER…'
+            : 'ボタンを押してください'
+          : '相手のボタン待ち…';
       } else if (view.phase === 'result') {
         this.statusEl.textContent = '判定';
       } else {
@@ -661,7 +690,9 @@ export class GameUI {
       this.confirmButton.textContent = canSet ? 'この椅子に仕掛ける' : 'この椅子に座る';
     }
     if (this.pressButton) {
-      this.pressButton.classList.toggle('hidden', !canPress);
+      this.pressButton.classList.toggle('hidden', !showPress);
+      this.pressButton.disabled = !canPress;
+      this.pressButton.textContent = pressLocked ? 'FINAL THUNDER…' : '電流を流す';
     }
     if (this.gridToggle) {
       this.gridToggle.classList.toggle('hidden', !canChoose);
@@ -879,8 +910,23 @@ export class GameUI {
     this.screenHost.innerHTML = html;
   }
 
+  /** 演出中でボタンがまだ押せない場合は false。 */
+  get canPressNow(): boolean {
+    const view = this.currentView;
+    return (
+      !!view &&
+      view.phase === 'press' &&
+      performance.now() >= this.pressUnlockAt &&
+      !this.localActionPending
+    );
+  }
+
   dispose(): void {
     this.clearRoundCall();
+    if (this.pressUnlockTimer !== null) {
+      clearTimeout(this.pressUnlockTimer);
+      this.pressUnlockTimer = null;
+    }
     this.destroyRoomEntry();
     this.finalThunder.destroy();
   }

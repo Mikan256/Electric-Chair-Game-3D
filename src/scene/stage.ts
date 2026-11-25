@@ -9,6 +9,7 @@ import { AssetLibrary, type LoadProgress } from './assets';
 import { AudioManager } from './audio';
 import type { AvatarInstance } from './avatar';
 import { ChairActor, chairLayout, STAGE_RADIUS } from './chair';
+import { DuelistSet } from './duelists';
 import { Effects } from './effects';
 import { MatchMonitor, type MonitorRow } from './match-monitor';
 import { RoomOrbitCamera, type RoomOrbitConfig } from './orbit-camera';
@@ -124,6 +125,7 @@ export class Theater {
   private readonly debugParams = new URLSearchParams(window.location.search);
   private readonly orbit: RoomOrbitCamera;
   private readonly monitor: MatchMonitor;
+  private readonly duelists: DuelistSet;
   private readonly composer: EffectComposer;
   private readonly bloom: UnrealBloomPass;
   private readonly effects: Effects;
@@ -154,6 +156,7 @@ export class Theater {
   private avatarsLoading: Promise<void> | null = null;
   private portrait: boolean | null = null;
   private pointerDown: { x: number; y: number; time: number } | null = null;
+  private lastDuelistPhase: MatchView['phase'] | null = null;
 
   constructor(canvas: HTMLCanvasElement, callbacks: TheaterCallbacks = {}) {
     this.canvas = canvas;
@@ -180,6 +183,12 @@ export class Theater {
     this.monitor = new MatchMonitor({ worldWidth: 20.8, worldHeight: 10.4 });
     this.monitorAnchor.add(this.monitor.mesh);
     this.monitor.update(null);
+    this.duelists = new DuelistSet({
+      scene: this.scene,
+      pedestalPosition: new THREE.Vector3(1.35, PLATFORM.height, 9.35),
+      lookAt: new THREE.Vector3(0, 1.15, 8.2),
+      platformY: PLATFORM.height,
+    });
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
@@ -580,6 +589,15 @@ export class Theater {
 
   applyView(view: MatchView): void {
     this.monitor.update(view);
+    this.duelists.setView(view);
+    if (view.phase === 'press' && this.lastDuelistPhase !== 'press') {
+      this.duelists.playFinalThunder();
+      this.effects.floatText(new THREE.Vector3(0, 0.2, 7.0), 'FINAL THUNDER', '#ffd166', 0.45);
+    }
+    if (view.phase === 'result' && view.lastResult && this.lastDuelistPhase !== 'result') {
+      this.duelists.playResult(view.lastResult.hit);
+    }
+    this.lastDuelistPhase = view.phase;
     this.setFloorNumberState(view);
     this.retiredChairs.clear();
     for (const chair of view.retiredChairs) this.retiredChairs.add(chair);
@@ -653,6 +671,8 @@ export class Theater {
     this.confettiPlayed = false;
     this.setButtonActive(false);
     this.monitor.update(null);
+    this.duelists.reset();
+    this.lastDuelistPhase = null;
     for (const chair of this.chairs.values()) {
       chair.reset();
       if (chair.group.parent !== this.scene) this.scene.add(chair.group);
@@ -769,6 +789,7 @@ export class Theater {
 
     this.orbit.update();
     this.updateHover();
+    this.duelists.update(dt);
     this.effects.update(dt);
     for (const chair of this.chairs.values()) chair.update(dt, elapsed);
     if (this.pressButtonMesh) {
@@ -805,6 +826,11 @@ export class Theater {
     return this.monitor.rows;
   }
 
+  /** E2E/デバッグ用: アバターが VRM かプリミティブか。 */
+  get avatarMode(): 'primitive' | 'vrm' {
+    return this.duelists.mode;
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -817,6 +843,7 @@ export class Theater {
     this.canvas.removeEventListener('pointercancel', this.onPointerCancel);
     this.monitor.mesh.removeFromParent();
     this.monitor.dispose();
+    this.duelists.dispose();
     this.orbit.dispose();
     this.effects.dispose();
     this.audio.dispose();

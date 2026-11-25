@@ -44,6 +44,42 @@ export function instantiateAvatar(vrm: VRM, clone: boolean): AvatarInstance {
   return { scene, vrm };
 }
 
+function prepareVrm(vrm: VRM): VRM {
+  vrm.scene.traverse((child) => {
+    if (child instanceof THREE.Mesh) child.frustumCulled = false;
+  });
+  return vrm;
+}
+
+/**
+ * Load two independent VRM instances for the attacker/defender avatars.
+ *
+ * A cloned VRM *scene* cannot be posed independently because the humanoid
+ * helper still points at the original skeleton, so the asset is fetched once
+ * and parsed twice. Returns null when the avatar asset is absent (slim ZIP).
+ */
+export async function loadVrmPair(url = assetUrl(ASSETS.avatar)): Promise<[VRM, VRM] | null> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const buffer = await response.arrayBuffer();
+
+    const parse = async (): Promise<VRM | null> => {
+      const loader = new GLTFLoader();
+      loader.register((parser) => new VRMLoaderPlugin(parser));
+      const gltf = await loader.parseAsync(buffer, '');
+      return (gltf.userData.vrm as VRM | undefined) ?? null;
+    };
+
+    const [first, second] = await Promise.all([parse(), parse()]);
+    if (!first || !second) return null;
+    return [prepareVrm(first), prepareVrm(second)];
+  } catch (error) {
+    console.warn('VRM avatar pair could not be loaded', error);
+    return null;
+  }
+}
+
 export function placeAvatar(
   instance: AvatarInstance,
   position: THREE.Vector3,

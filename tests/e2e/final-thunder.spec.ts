@@ -11,6 +11,11 @@ test.describe('final thunder', () => {
     await page.goto('/?attacker=0&botDelay=20&seed=e2e-final-thunder');
     await page.locator('#btn-solo').click();
     await expect(page.locator('#hud-turn')).toHaveText('TURN 1 / 8', { timeout: 20_000 });
+    await expect
+      .poll(async () => page.evaluate(() => window.__stage?.avatarMode ?? 'none'), {
+        timeout: 30_000,
+      })
+      .toBe('vrm');
 
     // Turn 1: the human is the attacker.
     await page.locator('#btn-grid').click();
