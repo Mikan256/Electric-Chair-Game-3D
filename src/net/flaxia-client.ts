@@ -117,6 +117,30 @@ interface ParentFrame {
   [key: string]: unknown;
 }
 
+export const ROOM_ID_MIN_LENGTH = 4;
+export const ROOM_ID_MAX_LENGTH = 16;
+
+const ROOM_ID_PATTERN = /^[A-Z0-9_-]+$/;
+
+/**
+ * Normalize a user-entered room ID.
+ *
+ * - trims surrounding whitespace
+ * - uppercases ASCII letters
+ * - requires 4-16 characters of `[A-Za-z0-9_-]`
+ *
+ * Returns `null` when the value cannot be a room ID. Keep this in sync with
+ * `src/ui/room-id.ts` (the input sanitizer uses the same rules).
+ */
+export function normalizeRoomId(value: string): string | null {
+  const normalized = value.trim().toUpperCase();
+  if (normalized.length < ROOM_ID_MIN_LENGTH || normalized.length > ROOM_ID_MAX_LENGTH) {
+    return null;
+  }
+  if (!ROOM_ID_PATTERN.test(normalized)) return null;
+  return normalized;
+}
+
 const DEFAULT_ALLOWED_ORIGINS = [
   'https://flaxia.app',
   'https://*.flaxia.app',
@@ -147,9 +171,10 @@ function parentOriginFromReferrer(): string | null {
  */
 export class FlaxiaClient {
   readonly gameId: string;
-  readonly requestedRoomId: string | null;
 
   private readonly emitter = new Emitter<FlaxiaEventMap>();
+  private requestedRoomIdValue: string | null;
+  private pendingRoomId: string | null = null;
   private readonly parent: Window;
   private readonly targetOrigin: string;
   private readonly allowedOrigins: string[];
@@ -167,7 +192,7 @@ export class FlaxiaClient {
   constructor(options: FlaxiaClientOptions) {
     if (!options.gameId) throw new Error('gameId is required');
     this.gameId = options.gameId;
-    this.requestedRoomId = options.roomId ?? null;
+    this.requestedRoomIdValue = options.roomId ?? null;
     this.parent = window.parent;
 
     const referrerOrigin = parentOriginFromReferrer();
@@ -195,8 +220,13 @@ export class FlaxiaClient {
     return this.connected;
   }
 
+  /** Last room ID this client asked for (normalized for `joinRoom`). */
+  get requestedRoomId(): string | null {
+    return this.requestedRoomIdValue;
+  }
+
   get currentRoomId(): string | null {
-    return this.roomState?.room.roomId ?? this.requestedRoomId;
+    return this.roomState?.room.roomId ?? this.pendingRoomId ?? this.requestedRoomIdValue;
   }
 
   get currentRoom(): RoomInfo | null {
@@ -252,13 +282,43 @@ export class FlaxiaClient {
 
   // --------------------------------------------------------------- commands
 
+  /**
+   * Connect to a room. Omit `roomId` to create a room. Kept for backwards
+   * compatibility; new UI code should call `createRoom()` / `joinRoom()`.
+   */
   connect(roomId?: string): void {
-    const room = roomId ?? this.requestedRoomId;
-    this.post({
-      type: 'MULTIPLAYER_CONNECT',
-      gameId: this.gameId,
-      ...(room ? { roomId: room } : {}),
-    });
+    if (roomId !== undefined) {
+      this.requestedRoomIdValue = roomId;
+      this.pendingRoomId = roomId;
+    }
+    this.postConnect(roomId ?? this.requestedRoomIdValue);
+  }
+
+  /** Leave any current room and ask the parent to create a new one. */
+  createRoom(): void {
+    this.requestedRoomIdValue = null;
+    this.pendingRoomId = null;
+    this.resetRoomState();
+    this.postConnect(null);
+  }
+
+  /**
+   * Join an existing room by ID. The ID is trimmed and uppercased; invalid
+   * values emit `INVALID_ROOM_ID` locally and are never sent to the parent.
+   */
+  joinRoom(roomId: string): void {
+    const normalized = normalizeRoomId(roomId);
+    if (normalized === null) {
+      this.emitter.emit('onError', {
+        code: 'INVALID_ROOM_ID',
+        message: 'ルームIDは4〜16文字の英数字・ハイフン・アンダースコアで入力してください',
+      });
+      return;
+    }
+    this.requestedRoomIdValue = normalized;
+    this.pendingRoomId = normalized;
+    this.resetRoomState();
+    this.postConnect(normalized);
   }
 
   disconnect(): void {
@@ -323,6 +383,23 @@ export class FlaxiaClient {
 
   // --------------------------------------------------------------- internals
 
+  private postConnect(roomId: string | null): void {
+    this.post({
+      type: 'MULTIPLAYER_CONNECT',
+      gameId: this.gameId,
+      ...(roomId ? { roomId } : {}),
+    });
+  }
+
+  /** Drop local room state so a room switch cannot leak the previous roster. */
+  private resetRoomState(): void {
+    this.roomState = null;
+    this.connected = false;
+    this.pendingStart = false;
+    this.frameSelfId = null;
+    this.inferredHost = null;
+  }
+
   private post(frame: ParentFrame): void {
     if (this.parent === window) {
       this.emitter.emit('onError', {
@@ -360,6 +437,7 @@ export class FlaxiaClient {
         if (!room || !players) return;
         this.roomState = { room, players };
         this.connected = true;
+        this.pendingRoomId = null;
         const explicitSelf = payload.selfId ?? payload.you ?? frame.selfId ?? frame.you ?? null;
         if (typeof explicitSelf === 'string') this.frameSelfId = explicitSelf;
         // The host is the only player allowed to start; if the room already
@@ -483,8 +561,17 @@ export class FlaxiaClient {
         break;
       }
       case 'MULTIPLAYER_ERROR': {
+        const code = String(payload.code ?? 'CONNECTION_ERROR');
+        if (code === 'ROOM_JOIN_FAILED') {
+          // Let the UI retry from a clean slate: createRoom() / joinRoom()
+          // must not fall back to the rejected ID.
+          this.pendingRoomId = null;
+          this.requestedRoomIdValue = null;
+          this.connected = false;
+          this.roomState = null;
+        }
         this.emitter.emit('onError', {
-          code: String(payload.code ?? 'CONNECTION_ERROR'),
+          code,
           message: String(payload.message ?? ''),
         });
         break;
@@ -492,6 +579,7 @@ export class FlaxiaClient {
       case 'MULTIPLAYER_DISCONNECT': {
         this.connected = false;
         this.roomState = null;
+        this.pendingRoomId = null;
         this.emitter.emit('onDisconnect', undefined);
         break;
       }

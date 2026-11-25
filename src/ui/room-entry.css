@@ -1,0 +1,203 @@
+/* 「ルームIDで参加」— RoomEntry 専用スタイル。styles.css は変更しない。 */
+
+.room-entry {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 100%;
+  padding: clamp(16px, 3vw, 40px);
+  color: var(--text);
+  pointer-events: auto;
+}
+
+.room-entry .room-entry-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(520px, 92vw);
+  margin: 0;
+}
+
+.room-entry .room-entry-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.room-entry .room-entry-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 20px;
+  letter-spacing: 0.1em;
+}
+
+.room-entry .room-entry-lead {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.room-entry .room-entry-create {
+  width: 100%;
+}
+
+.room-entry .room-entry-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.room-entry .room-entry-divider::before,
+.room-entry .room-entry-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.room-entry .room-entry-join {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+.room-entry .room-entry-label {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.room-entry .room-entry-field {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.room-entry .room-entry-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 52px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  background: rgba(4, 4, 9, 0.85);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 17px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.room-entry .room-entry-input::placeholder {
+  color: rgba(155, 148, 166, 0.6);
+  letter-spacing: 0.18em;
+}
+
+.room-entry .room-entry-input:focus-visible {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 2px rgba(159, 232, 255, 0.25);
+}
+
+.room-entry .room-entry-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.room-entry .room-entry-input[aria-invalid='true'] {
+  border-color: rgba(255, 36, 66, 0.75);
+  box-shadow: 0 0 0 2px rgba(255, 36, 66, 0.18);
+}
+
+.room-entry .room-entry-join-btn {
+  flex: 0 0 auto;
+  min-width: 96px;
+}
+
+.room-entry .room-entry-hint {
+  margin: 0;
+  min-height: 1.2em;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.room-entry .room-entry-hint.is-invalid {
+  color: var(--red-soft);
+}
+
+.room-entry .room-entry-error {
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 36, 66, 0.55);
+  background: rgba(255, 36, 66, 0.1);
+  color: #ffd8dd;
+  font-size: 12px;
+  line-height: 1.6;
+  animation: room-entry-shake 0.24s ease-in-out;
+}
+
+.room-entry .room-entry-error[hidden] {
+  display: none;
+}
+
+.room-entry .room-entry-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.room-entry.is-busy .room-entry-create,
+.room-entry.is-busy .room-entry-back {
+  opacity: 0.55;
+}
+
+@keyframes room-entry-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-3px);
+  }
+  75% {
+    transform: translateX(3px);
+  }
+}
+
+@media (max-width: 480px) {
+  .room-entry {
+    padding: 12px;
+  }
+
+  .room-entry .room-entry-panel {
+    width: 100%;
+    padding: 20px 18px;
+  }
+
+  .room-entry .room-entry-field {
+    flex-direction: column;
+  }
+
+  .room-entry .room-entry-join-btn {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .room-entry .room-entry-error {
+    animation: none;
+  }
+}

@@ -59,7 +59,8 @@ pnpm dev
 main.ts → App
   ├── Theater (three.js)   : scene/stage.ts, orbit-camera.ts, match-monitor.ts,
   │                          chair.ts, effects.ts, audio.ts
-  ├── GameUI (DOM)         : ui/game-ui.ts, ui/styles.css
+  ├── GameUI (DOM)         : ui/game-ui.ts, ui/styles.css,
+  │                          ui/room-entry.ts, ui/final-thunder.ts
   ├── FlaxiaClient         : net/flaxia-client.ts（postMessage 契約）
   └── MatchSession         : net/session.ts（ホスト権威 + set/sit/press）
         └── rules.ts       : 純粋な状態機械

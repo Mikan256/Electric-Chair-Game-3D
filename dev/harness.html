@@ -73,6 +73,35 @@
         border-color: var(--green);
         color: #bfffe0;
       }
+      .room-join {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .room-join input {
+        width: 104px;
+        padding: 4px 7px;
+        border: 1px solid #3b3b52;
+        border-radius: 3px;
+        background: #14141f;
+        color: var(--text);
+        font:
+          11px/1.4 ui-monospace,
+          monospace;
+        text-transform: uppercase;
+      }
+      .room-join input:focus {
+        outline: 1px solid var(--green);
+        outline-offset: 1px;
+      }
+      #room-error {
+        color: #ff8798;
+        font-size: 11px;
+        max-width: 260px;
+      }
+      #room-error[hidden] {
+        display: none;
+      }
       main {
         flex: 1;
         display: flex;
@@ -142,6 +171,21 @@
       <span class="status" id="status">waiting</span>
       <span class="status" id="players">0 / 2</span>
       <span class="spacer"></span>
+      <span class="room-join">
+        <input
+          id="room-input"
+          type="text"
+          maxlength="16"
+          placeholder="ROOM ID"
+          autocomplete="off"
+          autocapitalize="characters"
+          spellcheck="false"
+          aria-label="ルームID"
+        />
+        <button id="room-join">B 参加</button>
+        <button id="room-create">A 新規ルーム</button>
+      </span>
+      <span id="room-error" role="alert" hidden></span>
       <button id="force-ready">両者READY</button>
       <button class="primary" id="force-start">試合開始</button>
       <button id="reload">リロード</button>

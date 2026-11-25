@@ -83,6 +83,8 @@ test.describe('local Flaxia harness', () => {
     await defenderFrame.locator('.chair-btn[data-chair="8"]').click();
     await expect(defenderFrame.locator('#btn-confirm')).toBeEnabled();
     await defenderFrame.locator('#btn-confirm').click();
+    await expect(defenderFrame.locator('[data-choice="keep"]')).toBeVisible({ timeout: 10_000 });
+    await defenderFrame.locator('[data-choice="keep"]').click();
 
     await expect(attackerFrame.locator('#btn-press')).toBeVisible({ timeout: 15_000 });
     await attackerFrame.locator('#btn-press').click();

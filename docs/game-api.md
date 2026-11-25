@@ -140,6 +140,11 @@ flaxia.app（メイン）                      sandbox.flaxia.app
 `CHAT` / `REQUEST_STATE` / `SEND_PEER_DATA` も親 → ゲーム方向へエコーされる
 ことがあります（親の状態同期用）。
 
+`roomId` はゲーム側で `trim` + 大文字化し、4〜16文字の
+`[A-Za-z0-9_-]` に正規化してから送ることを推奨します
+（このゲームの `FlaxiaClient.joinRoom()` は自動で行います）。
+ルーム作成は `roomId` なしの `MULTIPLAYER_CONNECT` です。
+
 ### 4.5 キャプチャ（スクリーンショット / GIF）
 
 ゲーム側の実装は不要です。WVFS がゲーム HTML にキャプチャブリッジを注入します。
@@ -285,6 +290,7 @@ MULTIPLAYER_PEER_DATA      { data }
 | `DISCONNECTED` | 親 | WebSocket が切れた |
 | `CONNECTION_ERROR` | 親 | WebSocket 接続エラー |
 | `INVALID_CONFIG` | 親 | `gameId` 未提供 |
+| `INVALID_ROOM_ID` | ゲーム（SDK） | `joinRoom()` のルームID形式が不正（親へは送らない） |
 | `ROOM_JOIN_FAILED` | 親 | ルーム参加/作成に失敗 |
 | `ROOM_CLOSED` | DO | ホストがルームを閉じた |
 | `ROOM_TIMEOUT` | DO | 無操作によりルームが期限切れ |

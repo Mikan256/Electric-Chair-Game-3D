@@ -38,15 +38,23 @@ const ROOM = {
 } as const;
 
 /**
- * 前方の黒い平たい台。12番椅子の正面、円形フロアの外側に置く。
+ * 前方の黒い平たい台。12番椅子の正面、円形フロアの外側から
+ * 手前壁の手前までカメラ側へ延ばす。
  * 装飾は載せず、台座（buildPedestal）の土台としてだけ使う。
  */
 const PLATFORM = {
   width: 9,
   height: 0.4,
-  depth: 1.4,
-  z: 8.2,
+  startZ: 7.5,
+  endZ: ROOM.frontZ - 0.2,
 } as const;
+
+/** 台の奥行と中心。startZ / endZ から導出して二重管理を避ける。 */
+const PLATFORM_DEPTH = PLATFORM.endZ - PLATFORM.startZ;
+const PLATFORM_CENTER_Z = (PLATFORM.startZ + PLATFORM.endZ) / 2;
+
+/** 台座の中心 z。台の上（手前寄り）に固定する。 */
+const PEDESTAL_Z = 8.2;
 
 /** 奥壁中央の横長モニター。統合側は monitorAnchor に画面を差し込む。 */
 const MONITOR = {
@@ -274,19 +282,6 @@ export class Theater {
     chairFloor.position.y = 0.005;
     this.scene.add(chairFloor);
 
-    const floorRing = new THREE.Mesh(
-      new THREE.TorusGeometry(7.3, 0.028, 8, 128),
-      new THREE.MeshBasicMaterial({
-        color: 0xe6d7ae,
-        transparent: true,
-        opacity: 0.34,
-        blending: THREE.AdditiveBlending,
-      }),
-    );
-    floorRing.rotation.x = Math.PI / 2;
-    floorRing.position.y = 0.035;
-    this.scene.add(floorRing);
-
     // 奥の壁と左右の壁。360° カメラで見回しても虚空が映らないよう、
     // 椅子の円とカメラの可動域の外側まで部屋を広げる。
     const wallDepth = 0.35;
@@ -367,10 +362,10 @@ export class Theater {
       roughness: 0.74,
     });
     const platform = new THREE.Mesh(
-      new THREE.BoxGeometry(PLATFORM.width, PLATFORM.height, PLATFORM.depth),
+      new THREE.BoxGeometry(PLATFORM.width, PLATFORM.height, PLATFORM_DEPTH),
       platformMaterial,
     );
-    platform.position.set(0, PLATFORM.height / 2, PLATFORM.z);
+    platform.position.set(0, PLATFORM.height / 2, PLATFORM_CENTER_Z);
     this.scene.add(platform);
 
     // 奥の照明トラス。天井は設けず、上から吊るしたバーでスタジオ感を出す。
@@ -425,8 +420,8 @@ export class Theater {
   private buildPedestal(): void {
     if (this.debugParams.get('pedestal') === 'off') return;
     const group = new THREE.Group();
-    // 台の中心に置き、台座の底面が台の上面にぴったり乗る高さにする。
-    group.position.set(0, PLATFORM.height, PLATFORM.z);
+    // 台座の底面が台の上面にぴったり乗る高さにし、z は台の手前寄りに保つ。
+    group.position.set(0, PLATFORM.height, PEDESTAL_Z);
 
     const black = new THREE.MeshStandardMaterial({
       color: 0x0a0a0e,

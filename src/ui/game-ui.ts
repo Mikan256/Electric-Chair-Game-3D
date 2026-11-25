@@ -1,5 +1,7 @@
 import { assetUrl, ASSETS } from '@/assets/registry';
 import type { MatchView } from '@/game/types';
+import { FinalThunderPrompt, type FinalThunderChoice } from './final-thunder';
+import { RoomEntry } from './room-entry';
 
 export interface LobbyPlayer {
   id: string;
@@ -25,6 +27,8 @@ export interface UICallbacks {
   onBackToTitle: () => void;
   onReady: (ready: boolean) => void;
   onStart: () => void;
+  onCreateRoom: () => void;
+  onJoinRoom: (roomId: string) => void;
   onLeave: () => void;
   onPreviewChair: (chair: number | null) => void;
   onConfirmChair: (chair: number) => void;
@@ -80,6 +84,8 @@ export class GameUI {
   private readonly toastStack: HTMLElement;
   private readonly cutinLayer: HTMLElement;
   private readonly roundCallLayer: HTMLElement;
+  private readonly finalThunder: FinalThunderPrompt;
+  private roomEntry: RoomEntry | null = null;
   private roundCallTimer: ReturnType<typeof setTimeout> | null = null;
   private roundCallToken = 0;
   private readonly logoUrl = assetUrl(ASSETS.logo);
@@ -122,6 +128,7 @@ export class GameUI {
     this.toastStack = root.querySelector<HTMLElement>('#ui-toasts')!;
     this.cutinLayer = root.querySelector<HTMLElement>('#ui-cutin')!;
     this.roundCallLayer = root.querySelector<HTMLElement>('#ui-round')!;
+    this.finalThunder = new FinalThunderPrompt({ host: root });
   }
 
   clearCutIns(): void {
@@ -220,6 +227,8 @@ export class GameUI {
   ): void {
     this.clearCutIns();
     this.clearRoundCall();
+    this.destroyRoomEntry();
+    this.finalThunder.cancel();
     this.hud = null;
     this.setScreen(`
       <div class="screen title-screen">
@@ -293,7 +302,55 @@ export class GameUI {
       ?.addEventListener('click', () => this.callbacks.onBackToTitle());
   }
 
+  /** ルーム作成／ルームID参加の入口画面。 */
+  showRoomEntry(
+    state: { busy?: boolean; error?: string | null; initialRoomId?: string | null } = {},
+  ): void {
+    this.hud = null;
+    this.clearRoundCall();
+    this.destroyRoomEntry();
+    this.setScreen(`<div class="screen room-entry-screen"><div id="room-entry-host"></div></div>`);
+    const host = this.screenHost.querySelector<HTMLElement>('#room-entry-host');
+    if (!host) return;
+    this.roomEntry = new RoomEntry({
+      initialRoomId: state.initialRoomId ?? undefined,
+      busy: state.busy === true,
+      error: state.error ?? null,
+      onCreate: () => this.callbacks.onCreateRoom(),
+      onJoin: (roomId) => this.callbacks.onJoinRoom(roomId),
+      onBack: () => this.callbacks.onBackToTitle(),
+    });
+    host.append(this.roomEntry.element);
+    this.roomEntry.focus();
+  }
+
+  setRoomEntryBusy(busy: boolean): void {
+    this.roomEntry?.setBusy(busy);
+  }
+
+  setRoomEntryError(error: string | null): void {
+    this.roomEntry?.setError(error);
+  }
+
+  private destroyRoomEntry(): void {
+    this.roomEntry?.destroy();
+    this.roomEntry = null;
+  }
+
+  askFinalThunder(chair: number, playerName?: string): Promise<FinalThunderChoice> {
+    return this.finalThunder.ask({ chair, playerName });
+  }
+
+  cancelFinalThunder(): void {
+    this.finalThunder.cancel();
+  }
+
+  openChairDrawer(): void {
+    this.chairDrawer?.classList.remove('hidden');
+  }
+
   showLobby(state: LobbyState): void {
+    this.destroyRoomEntry();
     this.hud = null;
     this.readyState = state.players.find((p) => p.id === state.youId)?.isReady ?? false;
     const statusText =
@@ -824,5 +881,7 @@ export class GameUI {
 
   dispose(): void {
     this.clearRoundCall();
+    this.destroyRoomEntry();
+    this.finalThunder.destroy();
   }
 }

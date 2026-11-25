@@ -100,6 +100,8 @@ export class App {
       onBackToTitle: () => this.backToTitle(),
       onReady: (ready) => this.client?.setReady(ready),
       onStart: () => this.client?.startGame(),
+      onCreateRoom: () => this.createOnlineRoom(),
+      onJoinRoom: (roomId) => this.joinOnlineRoom(roomId),
       onLeave: () => this.leave(),
       onPreviewChair: (chair) => this.previewChair(chair),
       onConfirmChair: (chair) => this.confirmChair(chair),
@@ -268,15 +270,27 @@ export class App {
     }
     this.theater.audio.unlock();
     this.theater.setAvatarsVisible(false);
-    this.ui.showLobby({
-      roomId: null,
-      players: [],
-      youId: null,
-      isHost: false,
-      canStart: false,
-      status: 'connecting',
-    });
+    this.ui.showRoomEntry({ initialRoomId: this.query.room ?? null });
     this.ensureClient();
+    if (this.query.room) this.joinOnlineRoom(this.query.room);
+  }
+
+  /** 新規ルームを作成する（Flaxia 親が空きルームを割り当てる）。 */
+  private createOnlineRoom(): void {
+    this.ensureClient();
+    if (!this.client) return;
+    this.ui.setRoomEntryError(null);
+    this.ui.setRoomEntryBusy(true);
+    this.client.createRoom();
+  }
+
+  /** 既存のルームIDへ参加する。 */
+  private joinOnlineRoom(roomId: string): void {
+    this.ensureClient();
+    if (!this.client) return;
+    this.ui.setRoomEntryError(null);
+    this.ui.setRoomEntryBusy(true);
+    this.client.joinRoom(roomId);
   }
 
   private ensureClient(): void {
@@ -313,10 +327,21 @@ export class App {
         this.ui.addChat({ name: event.username || '相手', text: event.message });
       }),
       client.on('onError', (error) => {
-        this.ui.showToast(`${error.code}: ${error.message}`);
+        if (
+          !this.session &&
+          (error.code === 'ROOM_JOIN_FAILED' ||
+            error.code === 'INVALID_ROOM_ID' ||
+            error.code === 'ROOM_FULL')
+        ) {
+          this.ui.setRoomEntryBusy(false);
+          this.ui.setRoomEntryError(error.message);
+        } else {
+          this.ui.showToast(`${error.code}: ${error.message}`);
+        }
       }),
       client.on('onDisconnect', () => {
         this.ui.showToast('接続が切れました');
+        this.ui.setRoomEntryBusy(false);
         if (this.session) this.leave();
       }),
       client.on('onHostChanged', () => {
@@ -327,8 +352,6 @@ export class App {
         if (!granted) this.ui.showToast('フルスクリーンにできませんでした');
       }),
     );
-
-    client.connect(this.query.room ?? undefined);
   }
 
   private refreshLobby(): void {
@@ -420,6 +443,7 @@ export class App {
   // ------------------------------------------------------------------ views
 
   private handleView(view: MatchView, options: { online: boolean; roomId: string | null }): void {
+    if (view.phase !== 'sit') this.ui.cancelFinalThunder();
     const newMatch = this.matchId !== view.matchId;
     this.matchId = view.matchId;
     if (newMatch) {
@@ -508,6 +532,45 @@ export class App {
 
   private confirmChair(chair: number): void {
     if (!this.session) return;
+    const view = this.session.view;
+    if (view?.phase === 'sit' && view.attacker !== view.you) {
+      void this.confirmSittingChair(chair);
+      return;
+    }
+    this.commitChair(chair);
+  }
+
+  /**
+   * 守備側の着席確定。実写の「ファイナルサンダー？」と同じく、
+   * 席を変えるか、このまま確定するかを選んでから sit を送る。
+   */
+  private async confirmSittingChair(chair: number): Promise<void> {
+    if (!this.session) return;
+    const view = this.session.view;
+    if (!view) return;
+    this.ui.setLocalActionPending(true);
+    this.theater.audio.play('click');
+    const choice = await this.ui.askFinalThunder(chair, view.players[view.you].name);
+    const current = this.session?.view;
+    if (!current) return;
+    if (current.phase !== 'sit') {
+      this.ui.setLocalActionPending(false);
+      return;
+    }
+    if (choice === 'change') {
+      this.ui.setLocalActionPending(false);
+      this.ui.setPendingChair(null);
+      this.theater.setSelected(null);
+      this.theater.setEnabled(true);
+      this.ui.openChairDrawer();
+      this.ui.showToast('席を変えて、もう一度選んでください', 'info');
+      return;
+    }
+    this.commitChair(chair);
+  }
+
+  private commitChair(chair: number): void {
+    if (!this.session) return;
     const result = this.session.chooseChair(chair);
     if (!result.ok) {
       this.ui.showToast(result.message ?? '選択できません');
@@ -544,6 +607,7 @@ export class App {
 
   private leave(): void {
     this.resetSession();
+    this.ui.cancelFinalThunder();
     this.theater.audio.stopHeartbeat();
     this.theater.audio.stopGameBgm(300);
     this.theater.audio.stopRoundVoice();

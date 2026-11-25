@@ -85,7 +85,14 @@ interface MultiplayerClientOptions {
 ### 接続管理
 
 ```typescript
+// 新規ルームを作成（MULTIPLAYER_CONNECT に roomId を付けない）
+client.createRoom();
+
+// 既存ルームへ参加
+client.joinRoom('ab12');   // -> roomId: 'AB12'
+
 // 明示的に接続（autoConnect: false の場合）
+// roomId を省略すると新規作成。互換のため残している。
 client.connect(roomId?: string);
 
 // 切断
@@ -93,8 +100,35 @@ client.disconnect();
 
 // 状態確認
 client.isConnected;   // boolean
-client.currentRoomId; // string | null
+client.currentRoomId; // string | null（参加要求中の ID も含む）
 ```
+
+#### ルームIDの正規化
+
+`joinRoom()` は送信前にルームIDを正規化します。ゲーム側で入力欄を
+バリデーションする場合は、同じ関数を import して使えます。
+
+```typescript
+import { normalizeRoomId } from './net/flaxia-client';
+
+normalizeRoomId(' ab12 '); // 'AB12'
+normalizeRoomId('A1-b_9'); // 'A1-B_9'
+normalizeRoomId('ab');     // null
+```
+
+仕様:
+
+- 前後の空白を除去し、ASCII 英字を大文字化する
+- 4〜16文字
+- 使用可能文字は `A-Z` `0-9` `-` `_` のみ
+- 上記以外は `null`
+
+`joinRoom()` に不正な値を渡した場合、親フレームへは送信せず
+`onError` に `INVALID_ROOM_ID` を流します。
+
+`MULTIPLAYER_ERROR { code: 'ROOM_JOIN_FAILED' }` を受け取ると、
+クライアントは要求中のルームIDとルーム状態をクリアします。
+その後 `createRoom()` / `joinRoom()` を呼べばそのまま再接続できます。
 
 ### ゲーム操作
 
@@ -313,6 +347,7 @@ P2P 接続が確立できない場合や切断された場合、`sendPeerData()`
 | `ROOM_FULL` | ルーム定員超過 |
 | `ROOM_CLOSED` | ホストによるルーム閉鎖 |
 | `ROOM_TIMEOUT` | 長時間操作なしによるタイムアウト |
+| `INVALID_ROOM_ID` | ゲーム側 SDK。`joinRoom()` の形式が不正（親へは送信しない） |
 
 ---
 
