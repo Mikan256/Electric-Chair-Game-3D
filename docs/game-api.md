@@ -140,9 +140,9 @@ flaxia.app（メイン）                      sandbox.flaxia.app
 `CHAT` / `REQUEST_STATE` / `SEND_PEER_DATA` も親 → ゲーム方向へエコーされる
 ことがあります（親の状態同期用）。
 
-`roomId` はゲーム側で `trim` + 大文字化し、4〜16文字の
-`[A-Za-z0-9_-]` に正規化してから送ることを推奨します
-（このゲームの `FlaxiaClient.joinRoom()` は自動で行います）。
+`roomId` はゲーム側で `trim` し、4〜128文字の
+`[A-Za-z0-9._:-]` に正規化してから送ることを推奨します。
+大文字小文字は保持してください（このゲームの `FlaxiaClient.joinRoom()` は自動で行います）。
 ルーム作成は `roomId` なしの `MULTIPLAYER_CONNECT` です。
 
 ### 4.5 キャプチャ（スクリーンショット / GIF）

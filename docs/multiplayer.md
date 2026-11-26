@@ -111,17 +111,18 @@ client.currentRoomId; // string | null（参加要求中の ID も含む）
 ```typescript
 import { normalizeRoomId } from './net/flaxia-client';
 
-normalizeRoomId(' ab12 '); // 'AB12'
-normalizeRoomId('A1-b_9'); // 'A1-B_9'
+normalizeRoomId(' ab12 '); // 'ab12'
+normalizeRoomId('A1-b_9'); // 'A1-b_9'
 normalizeRoomId('ab');     // null
 ```
 
 仕様:
 
-- 前後の空白を除去し、ASCII 英字を大文字化する
-- 4〜16文字
-- 使用可能文字は `A-Z` `0-9` `-` `_` のみ
+- 前後の空白を除去する（大文字小文字は保持する）
+- Flaxia の仕様に合わせて 4〜128 文字
+- 使用可能文字は `A-Z` `a-z` `0-9` `.` `_` `:` `-`
 - 上記以外は `null`
+- 16文字を超える UUID 風のID（例: `550e8400-e29b-41d4-a716-446655440000`）も参加可能
 
 `joinRoom()` に不正な値を渡した場合、親フレームへは送信せず
 `onError` に `INVALID_ROOM_ID` を流します。

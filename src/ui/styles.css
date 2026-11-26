@@ -393,9 +393,13 @@ body,
 }
 
 .room-code {
+  min-width: 0;
   font-family: var(--font-display);
-  letter-spacing: 0.12em;
+  letter-spacing: 0.06em;
   color: var(--green);
+  text-align: right;
+  overflow-wrap: anywhere;
+  word-break: break-all;
 }
 
 .badge {

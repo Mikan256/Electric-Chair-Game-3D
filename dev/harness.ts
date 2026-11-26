@@ -497,7 +497,9 @@ function joinRoomFromInput(): void {
   if (!roomInput) return;
   const normalized = normalizeRoomId(roomInput.value);
   if (normalized === null) {
-    setRoomError('ルームIDは4〜16文字の英数字・ハイフン・アンダースコアで入力してください');
+    setRoomError(
+      'ルームIDは4〜128文字の英数字・ハイフン・アンダースコア・ドット・コロンで入力してください',
+    );
     return;
   }
   roomInput.value = normalized;

@@ -17,7 +17,7 @@ export interface RoomEntryOptions {
   error?: string | null;
 }
 
-const HINT_DEFAULT = `${ROOM_ID_MIN_LENGTH}〜${ROOM_ID_MAX_LENGTH}文字の英数字・ハイフン・アンダースコア`;
+const HINT_DEFAULT = `${ROOM_ID_MIN_LENGTH}〜${ROOM_ID_MAX_LENGTH}文字の英数字・ハイフン・アンダースコア・ドット・コロン`;
 const HINT_TOO_SHORT = `${ROOM_ID_MIN_LENGTH}文字以上入力してください`;
 const HINT_READY = 'Enter でも参加できます';
 
@@ -42,7 +42,7 @@ const TEMPLATE = `
           type="text"
           placeholder="ROOM ID"
           autocomplete="off"
-          autocapitalize="characters"
+          autocapitalize="off"
           spellcheck="false"
           maxlength="${ROOM_ID_MAX_LENGTH}"
           inputmode="text"
@@ -217,7 +217,7 @@ export class RoomEntry {
     const roomId = normalizeRoomId(this.input.value);
     if (roomId === null) {
       this.setError(
-        `ルームIDは${ROOM_ID_MIN_LENGTH}〜${ROOM_ID_MAX_LENGTH}文字の` +
+        `ルームIDは${ROOM_ID_MIN_LENGTH}〜${ROOM_ID_MAX_LENGTH}文字の英数字・ハイフン・アンダースコア・ドット・コロン` +
           '英数字・ハイフン・アンダースコアで入力してください',
       );
       this.input.focus();

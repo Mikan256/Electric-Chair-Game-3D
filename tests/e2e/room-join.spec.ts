@@ -80,7 +80,7 @@ test.describe('harness room join', () => {
     // An invalid format is rejected before touching the iframe.
     await page.locator('#room-input').fill('ab');
     await page.locator('#room-join').click();
-    await expect(page.locator('#room-error')).toContainText('ルームIDは4〜16文字');
+    await expect(page.locator('#room-error')).toContainText('ルームIDは4〜128文字');
     await expect(bob.locator('.room-code')).toHaveText('ROOM2');
 
     expect(errors).toEqual([]);

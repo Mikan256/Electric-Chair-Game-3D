@@ -90,16 +90,19 @@ function roomState(roomId: string): RoomState {
 
 describe('normalizeRoomId', () => {
   it.each([
-    [' ab12 ', 'AB12'],
-    ['abcd', 'ABCD'],
-    ['A1-b_9', 'A1-B_9'],
+    [' ab12 ', 'ab12'],
+    ['abcd', 'abcd'],
+    ['A1-b_9', 'A1-b_9'],
     ['1234567890123456', '1234567890123456'],
+    ['550e8400-e29b-41d4-a716-446655440000', '550e8400-e29b-41d4-a716-446655440000'],
+    ['a'.repeat(128), 'a'.repeat(128)],
     ['abc', null],
-    ['12345678901234567', null],
+    ['a'.repeat(129), null],
     ['', null],
     ['   ', null],
     ['ab cd', null],
-    ['ab.cd', null],
+    ['ab.cd', 'ab.cd'],
+    ['room:01', 'room:01'],
     ['あいうえ', null],
     ['ab/cd', null],
     ['abc!', null],
@@ -142,7 +145,7 @@ describe('FlaxiaClient room commands', () => {
     expect(c.currentRoomId).toBeNull();
   });
 
-  it('joinRoom trims and uppercases the roomId before sending', () => {
+  it('joinRoom trims and preserves the roomId case before sending', () => {
     const c = makeClient();
     c.joinRoom(' ab12 ');
 
@@ -150,10 +153,20 @@ describe('FlaxiaClient room commands', () => {
     expect(dom.posted[0]?.data).toEqual({
       type: 'MULTIPLAYER_CONNECT',
       gameId: 'denki-isu-3d',
-      roomId: 'AB12',
+      roomId: 'ab12',
     });
-    expect(c.currentRoomId).toBe('AB12');
-    expect(c.requestedRoomId).toBe('AB12');
+    expect(c.currentRoomId).toBe('ab12');
+    expect(c.requestedRoomId).toBe('ab12');
+  });
+
+  it('sends a 36-character UUID with hyphens and preserves case', () => {
+    const c = makeClient();
+    const id = '550e8400-e29b-41d4-a716-446655440000';
+    c.joinRoom(id);
+
+    expect(dom.posted).toHaveLength(1);
+    expect(dom.posted[0]?.data.roomId).toBe(id);
+    expect(c.currentRoomId).toBe(id);
   });
 
   it('never sends an invalid roomId and emits INVALID_ROOM_ID', () => {

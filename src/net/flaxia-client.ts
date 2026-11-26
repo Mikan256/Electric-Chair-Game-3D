@@ -118,22 +118,22 @@ interface ParentFrame {
 }
 
 export const ROOM_ID_MIN_LENGTH = 4;
-export const ROOM_ID_MAX_LENGTH = 16;
+export const ROOM_ID_MAX_LENGTH = 128;
 
-const ROOM_ID_PATTERN = /^[A-Z0-9_-]+$/;
+const ROOM_ID_PATTERN = /^[A-Za-z0-9._:-]+$/;
 
 /**
  * Normalize a user-entered room ID.
  *
  * - trims surrounding whitespace
- * - uppercases ASCII letters
- * - requires 4-16 characters of `[A-Za-z0-9_-]`
+ * - preserves case (Flaxia room IDs can be case-sensitive)
+ * - requires 4-128 characters of `[A-Za-z0-9._:-]`
  *
  * Returns `null` when the value cannot be a room ID. Keep this in sync with
  * `src/ui/room-id.ts` (the input sanitizer uses the same rules).
  */
 export function normalizeRoomId(value: string): string | null {
-  const normalized = value.trim().toUpperCase();
+  const normalized = value.trim();
   if (normalized.length < ROOM_ID_MIN_LENGTH || normalized.length > ROOM_ID_MAX_LENGTH) {
     return null;
   }
@@ -303,7 +303,7 @@ export class FlaxiaClient {
   }
 
   /**
-   * Join an existing room by ID. The ID is trimmed and uppercased; invalid
+   * Join an existing room by ID. The ID is trimmed (case preserved); invalid
    * values emit `INVALID_ROOM_ID` locally and are never sent to the parent.
    */
   joinRoom(roomId: string): void {
@@ -311,7 +311,8 @@ export class FlaxiaClient {
     if (normalized === null) {
       this.emitter.emit('onError', {
         code: 'INVALID_ROOM_ID',
-        message: 'ルームIDは4〜16文字の英数字・ハイフン・アンダースコアで入力してください',
+        message:
+          'ルームIDは4〜128文字の英数字・ハイフン・アンダースコア・ドット・コロンで入力してください',
       });
       return;
     }
