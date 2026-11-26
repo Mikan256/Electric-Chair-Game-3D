@@ -131,6 +131,16 @@ export class GameUI {
       <div class="round-call-layer" id="ui-round"></div>
       <div class="toast-stack" id="ui-toasts"></div>
       <div id="ui-screen"></div>
+      <div class="orientation-gate" id="orientation-gate" role="status" aria-live="polite">
+        <div class="orientation-gate__card">
+          <div class="orientation-gate__icon" aria-hidden="true"></div>
+          <p class="orientation-gate__kicker">LANDSCAPE RECOMMENDED</p>
+          <p class="orientation-gate__title">横画面でプレイしてください</p>
+          <p class="orientation-gate__text">
+            端末を横向きにすると、12脚の椅子と操作パネルが画面内に収まります。
+          </p>
+        </div>
+      </div>
     `;
     this.screenHost = root.querySelector<HTMLElement>('#ui-screen')!;
     this.flashLayer = root.querySelector<HTMLElement>('#ui-flash')!;

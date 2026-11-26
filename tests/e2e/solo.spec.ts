@@ -13,7 +13,7 @@ test.describe('solo vertical slice', () => {
     await expect(page.locator('img.logo')).toBeVisible();
 
     await page.locator('#btn-rules').click();
-    await expect(page.getByText('12脚の椅子')).toBeVisible();
+    await expect(page.locator('.panel').getByText('12脚の椅子')).toBeVisible();
     await page.locator('#btn-back').click();
     await expect(page.locator('#btn-solo')).toBeVisible();
 

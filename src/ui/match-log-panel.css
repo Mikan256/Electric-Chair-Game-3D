@@ -14,7 +14,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: clamp(8px, 2.4vw, 28px);
+  padding: max(clamp(8px, 2.4vw, 28px), env(safe-area-inset-top, 0px))
+    max(clamp(8px, 2.4vw, 28px), env(safe-area-inset-right, 0px))
+    max(clamp(8px, 2.4vw, 28px), env(safe-area-inset-bottom, 0px))
+    max(clamp(8px, 2.4vw, 28px), env(safe-area-inset-left, 0px));
   color: var(--text, #f4edf0);
   font-family:
     var(--font-body, 'Hiragino Kaku Gothic ProN'), 'Hiragino Sans', 'Noto Sans JP', 'Yu Gothic',

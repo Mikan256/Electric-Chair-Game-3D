@@ -87,7 +87,7 @@
 
 .final-thunder__band {
   position: absolute;
-  top: clamp(12px, 8vh, 84px);
+  top: max(clamp(12px, 8vh, 84px), env(safe-area-inset-top, 0px));
   left: 0;
   display: flex;
   align-items: center;
@@ -161,7 +161,8 @@
   gap: clamp(12px, 3vw, 40px);
   width: min(1120px, 100%);
   margin: 0 auto;
-  padding: clamp(12px, 2.4vh, 24px) clamp(18px, 4vw, 56px);
+  padding: clamp(12px, 2.4vh, 24px) max(clamp(18px, 4vw, 56px), env(safe-area-inset-right, 0px))
+    clamp(12px, 2.4vh, 24px) max(clamp(18px, 4vw, 56px), env(safe-area-inset-left, 0px));
 }
 
 /* 稲妻。transform / opacity だけで動かす。 */
@@ -307,9 +308,12 @@
 .final-thunder__panel {
   position: absolute;
   right: 0;
-  bottom: clamp(12px, 8vh, 84px);
+  bottom: max(clamp(12px, 8vh, 84px), env(safe-area-inset-bottom, 0px));
   left: 0;
-  width: min(640px, calc(100% - 24px));
+  width: min(
+    640px,
+    calc(100% - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))
+  );
   margin-inline: auto;
   padding: clamp(10px, 1.6vh, 16px) clamp(14px, 3vw, 26px);
   border: 1px solid rgba(255, 36, 66, 0.45);
@@ -704,7 +708,7 @@
 /* Flaxia の小さいプレイヤー（600×400 など）向け。 */
 @media (max-height: 560px) {
   .final-thunder__band {
-    top: clamp(20px, 8vh, 48px);
+    top: max(clamp(20px, 8vh, 48px), env(safe-area-inset-top, 0px));
     min-height: clamp(66px, 15vh, 96px);
   }
 
@@ -736,7 +740,7 @@
   }
 
   .final-thunder__panel {
-    bottom: clamp(20px, 8vh, 48px);
+    bottom: max(clamp(20px, 8vh, 48px), env(safe-area-inset-bottom, 0px));
     padding: 8px 12px;
   }
 

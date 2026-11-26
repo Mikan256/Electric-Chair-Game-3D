@@ -20,8 +20,10 @@
   align-items: flex-start;
   justify-content: center;
   overflow: hidden;
-  padding: clamp(10px, 3vw, 32px);
-  padding-top: clamp(52px, 11vh, 96px);
+  padding: max(clamp(52px, 11vh, 96px), calc(env(safe-area-inset-top, 0px) + 16px))
+    max(clamp(10px, 3vw, 32px), env(safe-area-inset-right, 0px))
+    max(clamp(10px, 3vw, 32px), env(safe-area-inset-bottom, 0px))
+    max(clamp(10px, 3vw, 32px), env(safe-area-inset-left, 0px));
   color: var(--text, #f4edf0);
   font-family:
     var(--font-body, 'Hiragino Kaku Gothic ProN'), 'Hiragino Sans', 'Noto Sans JP', 'Yu Gothic',

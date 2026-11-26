@@ -6,7 +6,10 @@
   justify-content: center;
   width: 100%;
   min-height: 100%;
-  padding: clamp(16px, 3vw, 40px);
+  padding: max(clamp(16px, 3vw, 40px), env(safe-area-inset-top, 0px))
+    max(clamp(16px, 3vw, 40px), env(safe-area-inset-right, 0px))
+    max(clamp(16px, 3vw, 40px), env(safe-area-inset-bottom, 0px))
+    max(clamp(16px, 3vw, 40px), env(safe-area-inset-left, 0px));
   color: var(--text);
   pointer-events: auto;
 }
@@ -193,6 +196,57 @@
 
   .room-entry .room-entry-join-btn {
     width: 100%;
+  }
+}
+
+@media (max-height: 560px) {
+  .room-entry {
+    align-items: flex-start;
+    padding: max(6px, env(safe-area-inset-top, 0px)) max(10px, env(safe-area-inset-right, 0px))
+      max(6px, env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-left, 0px));
+  }
+
+  .room-entry .room-entry-panel {
+    gap: 6px;
+    width: min(520px, 94vw);
+  }
+
+  .room-entry .room-entry-head {
+    gap: 3px;
+  }
+
+  .room-entry .room-entry-head h2 {
+    font-size: 16px;
+  }
+
+  .room-entry .room-entry-lead {
+    font-size: 10px;
+    line-height: 1.45;
+  }
+
+  .room-entry .room-entry-create,
+  .room-entry .room-entry-join-btn {
+    min-height: 40px;
+  }
+
+  .room-entry .room-entry-divider,
+  .room-entry .room-entry-label {
+    font-size: 9px;
+  }
+
+  .room-entry .room-entry-input {
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  .room-entry .room-entry-hint {
+    min-height: 0;
+    font-size: 10px;
+  }
+
+  .room-entry .room-entry-actions .btn {
+    min-height: 36px;
   }
 }
 
