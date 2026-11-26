@@ -1,4 +1,5 @@
 import { assetUrl, ASSETS, ROUND_VOICE } from '@/assets/registry';
+import { FINAL_THUNDER_STANDARD_PRE_PRESS_MS } from '@/game/timing';
 
 export type SoundKey = 'electric' | 'chair' | 'click';
 
@@ -249,7 +250,9 @@ export class AudioManager {
    */
   startFinalThunderTension(durationMs: number): void {
     try {
-      const duration = Number.isFinite(durationMs) ? Math.max(600, durationMs) : 3200;
+      const duration = Number.isFinite(durationMs)
+        ? Math.max(600, durationMs)
+        : FINAL_THUNDER_STANDARD_PRE_PRESS_MS;
       this.stopFinalThunderTension(true);
       if (!this.unlocked || this.muted) return;
       this.tensionStartedAt = performance.now();

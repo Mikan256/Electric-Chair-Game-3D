@@ -215,10 +215,10 @@ describe('finalThunderStepsFor', () => {
 
     expect(steps).toHaveLength(4);
     expect(steps.reduce((sum, step) => sum + step.durationMs, 0)).toBeCloseTo(STANDARD_MS, 6);
-    expect(steps.map((step) => step.durationMs)).toEqual([700, 800, 900, 800]);
+    expect(steps.map((step) => step.durationMs)).toEqual([1200, 1400, 1200, 1200]);
   });
 
-  it('標準尺の区間が 0-700 / 700-1500 / 1500-2400 / 2400-3200', () => {
+  it('標準尺の区間が 0-1200 / 1200-2600 / 2600-3800 / 3800-5000', () => {
     const steps = finalThunderStepsFor(options);
     const starts: number[] = [];
     let elapsed = 0;
@@ -227,7 +227,7 @@ describe('finalThunderStepsFor', () => {
       elapsed += step.durationMs;
     }
 
-    expect(starts).toEqual([0, 700, 1500, 2400]);
+    expect(starts).toEqual([0, 1200, 2600, 3800]);
     expect(elapsed).toBe(STANDARD_MS);
   });
 
@@ -237,7 +237,7 @@ describe('finalThunderStepsFor', () => {
 
     expect(high).toHaveLength(4);
     expect(high.reduce((sum, step) => sum + step.durationMs, 0)).toBeCloseTo(HIGH_STAKES_MS, 6);
-    expect(high.map((step) => step.durationMs)).toEqual([700, 1200, 1200, 2100]);
+    expect(high.map((step) => step.durationMs)).toEqual([1200, 1900, 1800, 2700]);
 
     expect(high[1]?.durationMs).toBeGreaterThan(standard[1]?.durationMs ?? 0);
     expect(high[2]?.durationMs).toBeGreaterThan(standard[2]?.durationMs ?? 0);
@@ -446,35 +446,35 @@ describe('CinematicCamera.playSequence', () => {
     cinematic.playSequence(steps);
     cinematic.update(1000); // 開始時刻
 
-    // 0〜700: 現在位置からプレスショットへ。
-    cinematic.update(1350);
+    // 0〜1200: 現在位置からプレスショットへ。
+    cinematic.update(1600);
     expect(camera.position.x).toBeCloseTo(1.2, 6);
     expect(camera.fov).toBeCloseTo(53, 6);
     expect(camera.position.distanceTo(press.position)).toBeGreaterThan(0);
 
-    cinematic.update(1700); // step 0 終了
+    cinematic.update(2200); // step 0 終了
     expect(camera.position.distanceTo(press.position)).toBeLessThan(1e-6);
     expect(controls.target.distanceTo(press.target)).toBeLessThan(1e-6);
     expect(camera.fov).toBe(46);
 
-    // 700〜1500: 守備側。移動は 300ms だけ。
-    cinematic.update(1850); // 移動の 150/300
+    // 1200〜2600: 守備側。移動は 650ms だけ。
+    cinematic.update(2525); // 移動の 325/650
     expect(camera.fov).toBeCloseTo(44, 6);
-    cinematic.update(2000); // 700 + 300
+    cinematic.update(2850); // 1200 + 650
     expect(camera.position.distanceTo(defender.position)).toBeLessThan(1e-6);
     expect(controls.target.distanceTo(defender.target)).toBeLessThan(1e-6);
     expect(camera.fov).toBe(42);
 
-    // 1500〜2400: ボタンアップ。
-    cinematic.update(2700); // 1500 + 200/300
-    expect(camera.fov).toBeCloseTo(42 - (10 * 200) / 300, 6);
-    cinematic.update(2800); // 1500 + 300
+    // 3600〜4800: ボタンアップ。
+    cinematic.update(3925); // 3600 + 325/650
+    expect(camera.fov).toBeCloseTo(42 - (10 * 325) / 650, 6);
+    cinematic.update(4250); // 3600 + 650
     expect(camera.position.distanceTo(button.position)).toBeLessThan(1e-6);
     expect(controls.target.distanceTo(button.target)).toBeLessThan(1e-6);
     expect(camera.fov).toBe(32);
 
-    // 2400〜3200: プレスへ戻してホールド。
-    cinematic.update(3700); // 2400 + 300
+    // 4800〜6000: プレスへ戻してホールド。
+    cinematic.update(5450); // 4800 + 650
     expect(camera.position.distanceTo(press.position)).toBeLessThan(1e-6);
     expect(camera.fov).toBe(46);
     expect(cinematic.active).toBe(true);
@@ -499,18 +499,18 @@ describe('CinematicCamera.playSequence', () => {
 
     cinematic.playSequence(steps);
     cinematic.update(1000);
-    cinematic.update(3200);
+    cinematic.update(6000);
     expect(cinematic.active).toBe(true);
 
     cinematic.restore();
     expect(cinematic.active).toBe(true);
     expect(controls.enabled).toBe(false);
 
-    cinematic.update(3300);
-    expect(camera.fov).toBe(32); // ボタンショットのホールド中
-    cinematic.update(3550); // 500ms の半分。32 から保存値 60 へ向かう。
-    expect(camera.fov).toBeCloseTo(46, 6);
-    cinematic.update(3800);
+    cinematic.update(6100);
+    expect(camera.fov).toBe(46); // 最後のプレスショット
+    cinematic.update(6350); // 500ms の半分。46 から保存値 60 へ向かう。
+    expect(camera.fov).toBeCloseTo(53, 6);
+    cinematic.update(6600);
 
     expect(cinematic.active).toBe(false);
     expect(controls.enabled).toBe(true);
@@ -524,7 +524,7 @@ describe('CinematicCamera.playSequence', () => {
 
     cinematic.finalThunderSequence(options);
     cinematic.update(0);
-    cinematic.update(700 + 300); // 守備側へ移動完了
+    cinematic.update(1850); // 1200 + 650: 守備側へ移動完了
 
     const defender = defenderShotFor(chair);
     expect(camera.position.distanceTo(defender.position)).toBeLessThan(1e-6);
@@ -538,14 +538,14 @@ describe('CinematicCamera.playSequence', () => {
 
     cinematic.playSequence(steps);
     cinematic.update(0);
-    cinematic.update(700);
+    cinematic.update(1200);
     expect(camera.position.distanceTo(pressShotFor(PEDESTAL, ATTACKER).position)).toBeLessThan(
       1e-6,
     );
 
     cinematic.shockShot(chair);
-    cinematic.update(800);
-    cinematic.update(1020); // 220ms 完了
+    cinematic.update(1300);
+    cinematic.update(1520); // 220ms 完了
     expect(camera.position.distanceTo(shock.position)).toBeLessThan(1e-6);
     expect(controls.target.distanceTo(shock.target)).toBeLessThan(1e-6);
     expect(camera.fov).toBe(42);
@@ -560,15 +560,15 @@ describe('CinematicCamera.playSequence', () => {
 
     cinematic.playSequence(steps);
     cinematic.update(0);
-    cinematic.update(700);
+    cinematic.update(1200);
     expect(camera.position.z).toBeCloseTo(9.6, 6);
     expect(camera.position.x).toBeCloseTo(1.6, 6);
 
-    cinematic.update(1100); // 守備側（クランプ不要）
+    cinematic.update(2000); // 守備側（クランプ不要）
     expect(camera.position.distanceTo(defenderShotFor(chair).position)).toBeLessThan(1e-6);
 
-    cinematic.update(1600); // ボタン開始。終了まで待つ。
-    cinematic.update(1800);
+    cinematic.update(2600); // ボタン開始。
+    cinematic.update(3250); // 移動完了
     expect(camera.position.z).toBeCloseTo(9.6, 6);
     expect(camera.position.x).toBeCloseTo(0, 6);
   });

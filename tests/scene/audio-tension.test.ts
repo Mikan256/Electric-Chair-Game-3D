@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { FINAL_THUNDER_HIGH_STAKES_PRE_PRESS_MS } from '@/game/timing';
 import { FINAL_THUNDER_TENSION, finalThunderTensionProfile } from '@/scene/audio';
 
-const DURATION = 5200;
+const DURATION = FINAL_THUNDER_HIGH_STAKES_PRE_PRESS_MS;
 
 describe('finalThunderTensionProfile', () => {
   it('開始時は心音 1.1 倍・低いライザーから始まる', () => {

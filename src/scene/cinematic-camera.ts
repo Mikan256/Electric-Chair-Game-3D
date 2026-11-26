@@ -20,7 +20,7 @@ export interface FinalThunderSequenceOptions {
   readonly pedestal: THREE.Vector3;
   readonly avatar: THREE.Vector3;
   readonly chair: THREE.Vector3;
-  /** src/game/timing.ts の 3200 / 5200 を想定 */
+  /** src/game/timing.ts の 5000 / 7600 を想定 */
   readonly durationMs: number;
 }
 
@@ -53,8 +53,8 @@ const BUTTON_FOV = 32;
 const PRESS_TRANSITION_MS = 450;
 const SHOCK_TRANSITION_MS = 220;
 const RESTORE_TRANSITION_MS = 500;
-/** タイムライン内で次のショットへ移動する時間（250〜350ms）。 */
-const SEQUENCE_TRANSITION_MS = 300;
+/** タイムライン内で次のショットへ移動する時間。ゆっくり見せるため650ms。 */
+const SEQUENCE_TRANSITION_MS = 650;
 /** 壁際のショットを作らないための余白。 */
 const BOUNDS_MARGIN = 0.4;
 const EPSILON = 1e-6;
@@ -66,16 +66,17 @@ const BUTTON_CAMERA_LOCAL_Y = 1.4;
 const BUTTON_CAMERA_LOCAL_Z = 2.2;
 
 /**
- * 標準尺（3200ms）の配分。0〜700 プレス、700〜1500 守備側、
- * 1500〜2400 ボタン、2400〜3200 プレスホールド。
+ * 標準尺（5000ms）の配分。0〜1200 プレス、1200〜2600 守備側、
+ * 2600〜3800 ボタン、3800〜5000 プレスホールドに分け、
+ * 各カットは650msかけてイージングしながらゆっくり移動する。
+ * 高stakes（7600ms）では守備側とボタンを長く取り、最後のプレスを大きく伸ばす。
  */
-const FINAL_THUNDER_LEAD_MS = 700;
-const FINAL_THUNDER_DEFENDER_STANDARD_MS = 800;
-const FINAL_THUNDER_BUTTON_STANDARD_MS = 900;
-/** 高stakes（5200ms）では 2/3 を長く取り、最後のプレスを大きく伸ばす。 */
-const FINAL_THUNDER_LONG_FORM_MS = 5200;
-const FINAL_THUNDER_DEFENDER_LONG_MS = 1200;
-const FINAL_THUNDER_BUTTON_LONG_MS = 1200;
+const FINAL_THUNDER_LEAD_MS = 1200;
+const FINAL_THUNDER_DEFENDER_STANDARD_MS = 1400;
+const FINAL_THUNDER_BUTTON_STANDARD_MS = 1200;
+const FINAL_THUNDER_LONG_FORM_MS = 7600;
+const FINAL_THUNDER_DEFENDER_LONG_MS = 1900;
+const FINAL_THUNDER_BUTTON_LONG_MS = 1800;
 
 function finiteOr(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
@@ -228,8 +229,8 @@ function clampShotPosition(position: THREE.Vector3, bounds: CinematicBounds): TH
  * FINAL THUNDER の時間配分。
  *
  * 通常尺では「プレス → 守備側 → ボタン → プレスホールド」を
- * 700 / 800 / 900 / 残り に分ける。高stakes では守備側とボタンを
- * 1200 ずつに伸ばし、残りを最後のプレスホールドへ回す。
+ * 1200 / 1400 / 1200 / 残り に分ける。高stakes では守備側とボタンを
+ * 1900 / 1800 に伸ばし、残りを最後のプレスホールドへ回す。
  * 合計は必ず durationMs と一致する。
  */
 function finalThunderDurations(durationMs: number): [number, number, number, number] {
@@ -360,7 +361,7 @@ export class CinematicCamera {
    * 複数ショットのタイムラインを開始する。
    *
    * 最初のステップは現在のカメラ位置からその duration をかけて移動し、
-   * 以降は 300ms（ステップが短ければその全長）で前のショットから移動する。
+   * 以降は 650ms（ステップが短ければその全長）で前のショットから移動する。
    * タイムライン終了後は最後のショットをホールドしたまま active を維持する。
    */
   playSequence(steps: readonly CinematicStep[]): void {
@@ -519,7 +520,8 @@ export class CinematicCamera {
     const previous = index === 0 ? sequence.from : sequence.steps[index - 1]?.shot;
     if (!previous) return;
 
-    const t = transition <= EPSILON ? 1 : Math.min(1, Math.max(0, local / transition));
+    const linear = transition <= EPSILON ? 1 : Math.min(1, Math.max(0, local / transition));
+    const t = linear * linear * (3 - 2 * linear);
 
     if (t >= 1) {
       this.applyResolvedShot(step.shot);
