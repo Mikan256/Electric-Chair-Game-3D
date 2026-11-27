@@ -12,12 +12,12 @@ test.describe('match log panel', () => {
 
     await page.goto('/?attacker=0&botDelay=20&seed=e2e-match-log');
     await page.locator('#btn-solo').click();
-    await expect(page.locator('#hud-turn')).toHaveText('TURN 1 / 8', { timeout: 20_000 });
+    await expect(page.locator('#hud-turn')).toHaveText('ROUND 1 / 8', { timeout: 20_000 });
 
     // 通常のUIボタンから開ける。
     await page.locator('#btn-log').click();
     await expect(page.locator('.match-log-panel')).toBeVisible();
-    await expect(page.locator('[data-match-log-turn]')).toContainText('TURN 01 / 08');
+    await expect(page.locator('[data-match-log-turn]')).toContainText('ROUND 01 / 08');
     await expect(page.locator('[data-match-log-row]')).toHaveCount(1);
     await expect(page.locator('[data-wired="unknown"]')).toHaveText('???');
     await page.locator('.match-log-panel [data-match-log-close]').click();

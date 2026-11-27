@@ -10,7 +10,7 @@ test.describe('final thunder', () => {
 
     await page.goto('/?attacker=0&botDelay=20&seed=e2e-final-thunder');
     await page.locator('#btn-solo').click();
-    await expect(page.locator('#hud-turn')).toHaveText('TURN 1 / 8', { timeout: 20_000 });
+    await expect(page.locator('#hud-turn')).toHaveText('ROUND 1 / 8', { timeout: 20_000 });
     await expect
       .poll(async () => page.evaluate(() => window.__stage?.avatarMode ?? 'none'), {
         timeout: 30_000,
@@ -28,8 +28,9 @@ test.describe('final thunder', () => {
 
     // Turn 2: the human is the defender.
     await page.waitForFunction(
-      () => (window as unknown as { __denkiIsu?: { session?: { view?: { phase?: string } } } })
-        .__denkiIsu?.session?.view?.phase === 'sit',
+      () =>
+        (window as unknown as { __denkiIsu?: { session?: { view?: { phase?: string } } } })
+          .__denkiIsu?.session?.view?.phase === 'sit',
       null,
       { timeout: 20_000 },
     );

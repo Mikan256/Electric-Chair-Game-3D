@@ -9,8 +9,9 @@
 |---|---|
 | 12 脚 | `config.chairCount = 12` |
 | 交互に攻撃/防御 | 1 ターンごとに `attacker = otherPlayer(attacker)` |
+| ラウンド | 攻守が 1 回ずつ攻撃 = 2 ターン。`round = ceil(turn / 2)`、`maxRounds = ceil(maxTurns / 2) = 8` |
 | 攻撃側が 1 脚に電気を仕掛ける | `set` フェーズ。攻撃側だけが salted hash を送る |
-| 防御側が 1 脚を選ぶ | `sit` フェーズ。守備側の椅子は公開される |
+| 防御側が 1 脚を選ぶ | `sit` フェーズ。`select` で選んだ椅子を `previewChair` として即時公開し、確定で `sittingChair` にする |
 | 電流を流す | `press` フェーズ。攻撃側が前方台座のボタンを押す |
 | 回避 | 防御側に「座った椅子番号」を加算 |
 | 感電 | 防御側の累積ポイントを 0 に |
@@ -18,7 +19,7 @@
 | 感電椅子 | 何もせず、再使用可能 |
 | 40pt 先取 | 回避加算直後に判定 |
 | 3 回感電 | 攻撃側の `shocksDealt` が 3 で勝利 |
-| 最大 8 ターン | 8 ターンの result 後に points 比較 |
+| 最大 16 ターン（8 ラウンド） | 16 ターンの result 後に points 比較 |
 
 ### 「仕掛ける」と「ボタン」の区別
 
@@ -27,7 +28,8 @@
 隠す対象そのものではありません。したがって画面では次を分けています。
 
 - 攻撃側の仕掛け（椅子）: `press` まで相手に公開しない
-- 守備側が座った椅子: `sit` 直後に公開
+- 守備側が選んだ椅子: `sit` 中の `select` 時点で `previewChair` として公開
+- 守備側が確定した椅子: `sit` 確定で `sittingChair` として公開
 - 前方の黄色いボタン: 攻撃側が `press` で押す操作
 
 ### 明文化した追加仕様
@@ -37,10 +39,13 @@
   2. 守備側が椅子に座る（公開）
   3. 攻撃側が前方のボタンを押す
   4. 判定・椅子の処理・攻守交代
-- **着席の確定**: 守備側が「この椅子に座る」を押すと「FINAL THUNDER?」を表示し、
-  「席を変える」なら sit のまま選び直し、「このまま行く」なら sit を確定する。
+- **着席の確定**: 守備側が椅子を選ぶと、その時点で `select` を送って
+  `previewChair` を公開する（攻撃側にも 3D ハイライトで見える）。
+  「この椅子に座る」を押すと「FINAL THUNDER?」を表示し、
+  「席を変える」なら `select(chair: null)` でプレビューを消して sit のまま選び直し、
+  「このまま行く」なら sit を確定して `previewChair` を `sittingChair` に移す。
   確定後は実写のような会話による変更は行わない（攻撃側のボタンとの競合を防ぐため）。
-- **同点**: 8 ターン終了時にポイントが同じ場合は引き分け。
+- **同点**: 16 ターン（8 ラウンド）終了時にポイントが同じ場合は引き分け。
 - **時間制限なし**: `set` / `sit` / `press` / `result` にフェーズ期限はなく、
   時間切れによる不戦敗もない。`result` はプレイヤーが「次へ」を押して進める。
 - **降参/退出**: 相手の勝利（reason: `forfeit`）。
@@ -65,6 +70,11 @@ press: chair + salt を送信（攻撃側）→ hash を検証して判定
 - ホストは `wiredChair` を `MatchState` の内部に保持し、
   `MatchView` には `wiredCommitted` の真偽だけを出す。
 - 守備側の `sittingChair` は実写同様に公開する。
+- 守備側が `select` で選んだ椅子は `previewChair` として sit 中に公開する。
+  攻撃側は FINAL THUNDER の確定前から 3D の座席ハイライト・アバター・状況テキストで
+  見える。`sit` 確定で `previewChair` は消え、`sittingChair` に置き換わる。
+- `select` の `chair: null`（席を変える）でも `previewChair` は消える。
+  これは「守備側の選択の途中経過」であり、`wiredChair` とは別物。
 
 ## 3. 状態機械
 
@@ -78,6 +88,8 @@ set ──(攻撃側 commit)──▶ sit ──(守備側 chair)──▶ press
                                                                        finished
 ```
 
+- `sit` 中は守備側の `select`（`chair` または `null`）で `previewChair` を更新できる。
+  フェーズは `sit` のままで、`sit` 確定時に `sittingChair` へ移して `press` に進む。
 - `MatchState` はイミュータブル。`applyAction()` が新しい state を返す。
 - `revision` は単調増加。ネットワークのスナップショット連番とは別。
 - フェーズ期限・タイムアウト処理は持たない。試合はプレイヤーの操作でのみ進む。
@@ -136,8 +148,10 @@ set ──(攻撃側 commit)──▶ sit ──(守備側 chair)──▶ press
 - **FINAL THUNDER**: 右から左へ入る横長カットイン。ゲーム画面は切り替えず、
   下部の「席を変える／このまま行く」で選択する。確定後は仕掛け側にも
   `TARGET LOCKED` カットインを表示する
-- **守備側プレビュー**: カットイン開始と同時に、選んだ椅子へ守備側アバターを座らせる。
-  「席を変える」で一旦消し、「このまま行く」で press/result まで維持する
+- **守備側プレビュー**: 守備側が `select` で椅子を選んだ時点（FINAL THUNDER のカットイン前）に、
+  選んだ椅子へ守備側アバターを座らせ、3D の座席ハイライトと状況テキストを攻撃側にも表示する。
+  「席を変える」は `select(chair: null)` で一旦消し、「このまま行く」の `sit` 確定で
+  `sittingChair` に移して press/result まで維持する
 - **奥壁モニター**: 22×11 の大型スクリーン。タイトル／ターン／フェーズと
   FINAL THUNDER表示だけの装飾画面。試合の詳細表は置かない
 - **試合経過UI**: 画面下の「試合経過」ボタンから通常のDOMパネルを開く。
@@ -179,6 +193,9 @@ set ──(攻撃側 commit)──▶ sit ──(守備側 chair)──▶ press
 - 勝利: 紙吹雪 + `WINNER` オーバーレイ。
 - BGM: タイトルは `MusMus-BGM-168.mp3`。ゲーム中は `Innovation.wav` を MP3 化してループ。
 - ラウンド開始時: `ROUND N` の画面コールと音声（Piper TTS）、チャイム。
+  `N = ceil(turn / 2)`、最大 8。ターンごとではなく、攻守が 1 回ずつ攻撃を終えた
+  タイミング（turn 1 / 3 / 5 / 7 / 9 / 11 / 13 / 15 の開始時）にだけ進む。
+  奥壁モニターと試合経過のヘッダーも `ROUND N / 8` を表示する。
 
 `ファイナルサンダー` は旧 Unity 実装では「仕掛けた後に押す演出ボタン」で、
 ルール上の追加効果はない。本実装も演出のみ。
@@ -200,14 +217,16 @@ set ──(攻撃側 commit)──▶ sit ──(守備側 chair)──▶ press
 ## 7. テスト
 
 - `tests/game/rules.test.ts`: 得点、感電、椅子の退場、勝利条件、明示的な降参、
-  ビューの秘匿性（set/sit 中に wiredChair が出ないこと）。
+  ビューの秘匿性（set/sit 中に wiredChair が出ないこと、sit 中は previewChair が公開され、
+  sit 確定で previewChair が消えて sittingChair になること）、ラウンドの数え方
+  （turn 1→round 1、turn 2→round 1、turn 3→round 2、turn 15→round 8、maxRounds = 8）。
 - `tests/net/session.test.ts`: MemoryBus 上の 2 セッション、set/sit/press、
   再接続、再戦、ボット対戦。
 - `tests/e2e/solo.spec.ts`: タイトル → ソロ → 結果 → 次ターン。
 - `tests/e2e/harness.spec.ts`: 2 iframe の実際の postMessage 経路。
 - `tests/e2e/mobile-layout.spec.ts`: 横画面スマホでタイトル・ルール・HUD が
   画面内に収まること、縦画面で横画面推奨ゲートが出ること。
-- `pnpm simulate`: 大量対戦で不変条件（椅子の重複なし、8 ターン以内など）を検査。
+- `pnpm simulate`: 大量対戦で不変条件（椅子の重複なし、16 ターン以内など）を検査。
 
 ## 8. 今後の候補
 

@@ -86,6 +86,8 @@ export class App {
   private lastPhase: string | null = null;
   private lastViewTurn = -1;
   private lastRoundCalled = -1;
+  /** 直近にブロードキャストした守備側の仮選択（重複送信の抑制）。 */
+  private lastSentPreviewChair: number | null = null;
   private disposed = false;
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
@@ -493,11 +495,12 @@ export class App {
         this.ui.playCutIn(view.outcome?.reason === 'shocks' ? 'final-thunder' : 'lightning');
       }
     }
+    if (view.phase !== 'sit') this.lastSentPreviewChair = null;
     this.lastPhase = view.phase;
-    if (newMatch || view.turn !== this.lastRoundCalled) {
-      this.lastRoundCalled = view.turn;
-      this.ui.showRoundCall(view.turn, view.config.maxTurns, () =>
-        this.theater.audio.announceRound(view.turn),
+    if (newMatch || view.round !== this.lastRoundCalled) {
+      this.lastRoundCalled = view.round;
+      this.ui.showRoundCall(view.round, view.maxRounds, () =>
+        this.theater.audio.announceRound(view.round),
       );
     }
     this.theater.setEnabled(canSelect);
@@ -522,6 +525,13 @@ export class App {
     if (!canChoose) return;
     this.theater.setSelected(chair);
     this.ui.setPendingChair(chair);
+    // 守備側の tentative な選択を攻撃側へ公開する（契約は sit 中のみ）。
+    if (view.phase === 'sit' && !isAttacker && view.sittingChair === null) {
+      if (this.lastSentPreviewChair !== chair) {
+        this.lastSentPreviewChair = chair;
+        this.session?.selectChair(chair);
+      }
+    }
   }
 
   private onChairPick(chair: number): void {
@@ -567,6 +577,8 @@ export class App {
     }
     if (choice === 'change') {
       this.theater.previewSitting(null);
+      this.lastSentPreviewChair = null;
+      this.session.selectChair(null);
       this.ui.setLocalActionPending(false);
       this.ui.setPendingChair(null);
       this.theater.setSelected(null);

@@ -472,6 +472,31 @@ client.on('onPlayerJoined', () => {
 
 ---
 
+## 電気イスゲームのアクション
+
+このリポジトリのゲーム層は、Flaxia の `sendPeerData` に JSON を載せて次のアクションを送ります。
+ホスト権威で、ゲストは自分の操作だけを送り、ホストが `applyAction()` の結果を
+`createView()` で配布します。
+
+| action | 送信側 | フェーズ | payload | 効果 |
+|---|---|---|---|---|
+| `set` | 攻撃側 | `set` | `{ type:'set', hash }` | 仕掛けをコミットして `sit` へ |
+| `select` | 守備側 | `sit` | `{ type:'select', chair: number \| null }` | 選んだ椅子を `previewChair` として公開。フェーズは変わらない。`null` で取り消し |
+| `sit` | 守備側 | `sit` | `{ type:'sit', chair }` | 着席確定。`previewChair` を消して `sittingChair` を公開し `press` へ |
+| `press` | 攻撃側 | `press` | `{ type:'press', chair, salt }` | 仕掛けを公開して判定し `result` へ |
+| `rematch` | 両者 | `finished` | `{ type:'rematch' }` | 新しい matchId で再戦 |
+
+payload は `player: PlayerIndex` を省略した抜粋で、実装では各アクションに送信者が付きます。
+
+- `select` は守備側だけが `sit` 中に送れる。`chair` を選び直すたびに上書きされ、
+  `sit` 確定（`sit` アクション）で `previewChair` は消える。
+- `MatchView.previewChair` は公開される（攻撃側も FINAL THUNDER の確定前から
+  3D ハイライトで見える）。`wiredChair` は `press` / result まで `MatchView` に含めず、
+  `wiredCommitted` の真偽だけを公開する。
+- `MatchView` は `turn` に加えて `round`（`ceil(turn / 2)`）と
+  `maxRounds`（`ceil(maxTurns / 2)` = 8）を持つ。UI の `ROUND N` は
+  攻撃ごとではなく、攻守が 1 回ずつ攻撃を終えたラウンド単位で進む。
+
 ## 制限事項
 
 - 現在の最大プレイヤー数: **2人** (将来的に拡張予定)

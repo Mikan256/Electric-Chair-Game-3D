@@ -157,7 +157,7 @@ export class GameUI {
   }
 
   /** ラウンド開始コール。ゲームの進行を止めない。 */
-  showRoundCall(round: number, maxTurns = 8, onShown?: () => void): void {
+  showRoundCall(round: number, maxRounds = 8, onShown?: () => void): void {
     const token = ++this.roundCallToken;
     if (this.roundCallTimer !== null) {
       clearTimeout(this.roundCallTimer);
@@ -174,7 +174,7 @@ export class GameUI {
         <div class="round-call">
           <div class="round-call-kicker">ELECTRIC CHAIR GAME</div>
           <div class="round-call-main">ROUND ${round}</div>
-          <div class="round-call-sub">第${round}ラウンド / ${maxTurns}</div>
+          <div class="round-call-sub">第${round}ラウンド / ${maxRounds}</div>
         </div>
       `;
       const call = this.roundCallLayer.querySelector<HTMLElement>('.round-call');
@@ -318,7 +318,7 @@ export class GameUI {
             <div><span>得点した椅子</span><strong>以後使用不可</strong></div>
             <div><span>感電した椅子</span><strong>以後も使用可能</strong></div>
             <div><span>進行</span><strong>仕掛け → 着席 → ボタン → 判定</strong></div>
-            <div><span>勝利条件</span><strong>40pt先取 / 3回感電させる / 8ターン終了時のポイント</strong></div>
+            <div><span>勝利条件</span><strong>40pt先取 / 3回感電させる / 8ラウンド（16ターン）終了時のポイント</strong></div>
           </div>
           <p class="muted">
             攻撃側が電気を仕掛ける椅子を秘密に選び、守備側が座ったあと、攻撃側が前方のボタンを押します。
@@ -478,7 +478,7 @@ export class GameUI {
     this.setScreen(`
       <div class="hud">
         <div class="hud-top">
-          <span class="turn" id="hud-turn">TURN 1 / 8</span>
+          <span class="turn" id="hud-turn">ROUND 1 / 8</span>
           <span class="phase" id="hud-phase">椅子を選択</span>
         </div>
         <div class="player-card left" id="hud-player-0">
@@ -630,7 +630,7 @@ export class GameUI {
     }
 
     if (this.turnEl) {
-      this.turnEl.textContent = `TURN ${view.turn} / ${view.config.maxTurns}`;
+      this.turnEl.textContent = `ROUND ${view.round} / ${view.maxRounds}`;
     }
     if (this.phaseEl) this.phaseEl.textContent = PHASE_LABEL[view.phase] ?? view.phase;
 
@@ -698,11 +698,18 @@ export class GameUI {
             : '電気イスを仕掛ける椅子を選べ'
           : '攻撃側が電気イスを仕掛けています…';
       } else if (view.phase === 'sit') {
+        const preview = view.previewChair;
         this.hintEl.textContent = isDefender
           ? view.sittingChair !== null
             ? '着席完了。相手のボタンを待っています…'
-            : '座る椅子を選べ。相手の仕掛けを読め'
-          : '守備側が椅子を選んでいます…';
+            : preview !== null
+              ? `あなたは ${preview}番を選択中…`
+              : '座る椅子を選べ。相手の仕掛けを読め'
+          : view.sittingChair !== null
+            ? '守備側が着席しました…'
+            : preview !== null
+              ? `相手は ${preview}番を選択中…`
+              : '守備側が椅子を選んでいます…';
       } else if (view.phase === 'press') {
         this.hintEl.textContent = isAttacker
           ? performance.now() < this.pressUnlockAt
@@ -732,11 +739,16 @@ export class GameUI {
             : '仕掛ける椅子を選択'
           : '攻撃側のセット待ち…';
       } else if (view.phase === 'sit') {
+        const preview = view.previewChair;
         this.statusEl.textContent = isDefender
           ? view.sittingChair !== null
             ? '着席済み・相手のボタン待ち'
-            : '座る椅子を選択'
-          : '守備側の着席待ち…';
+            : preview !== null
+              ? `${preview}番を選択中`
+              : '座る椅子を選択'
+          : preview !== null
+            ? `相手は ${preview}番を選択中…`
+            : '守備側の着席待ち…';
       } else if (view.phase === 'press') {
         this.statusEl.textContent = isAttacker
           ? performance.now() < this.pressUnlockAt
@@ -793,7 +805,12 @@ export class GameUI {
         (view.phase === 'sit' && !isAttacker && view.sittingChair === null));
     for (const [chair, button] of this.chairButtons) {
       const retired = view.retiredChairs.includes(chair);
-      const selected = this.pendingChair === chair || view.sittingChair === chair;
+      // 守備側の tentative な選択は previewChair として公開される。
+      // 攻撃側はそれを「自分の選択」として点灯させない。
+      const selected =
+        this.pendingChair === chair ||
+        view.sittingChair === chair ||
+        (!isAttacker && view.phase === 'sit' && view.previewChair === chair);
       button.classList.toggle('retired', retired);
       button.classList.toggle('selected', selected);
       button.disabled = retired || !canChoose || !view.availableChairs.includes(chair);

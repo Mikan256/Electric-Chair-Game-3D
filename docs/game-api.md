@@ -145,6 +145,34 @@ flaxia.app（メイン）                      sandbox.flaxia.app
 大文字小文字は保持してください（このゲームの `FlaxiaClient.joinRoom()` は自動で行います）。
 ルーム作成は `roomId` なしの `MULTIPLAYER_CONNECT` です。
 
+#### 電気イスゲームの `MatchAction` / `MatchView`（実装例）
+
+これは Flaxia のフレームではなく、本リポジトリのゲーム層が `sendPeerData` 上で使う
+アプリケーション層の契約です。
+
+```ts
+type MatchAction =
+  | { type: 'set'; player: PlayerIndex; hash: string }
+  // 守備側のみ。sit 中。chair: null はプレビュー解除（席を変える）。フェーズは変えない
+  | { type: 'select'; player: PlayerIndex; chair: number | null }
+  | { type: 'sit'; player: PlayerIndex; chair: number }
+  | { type: 'press'; player: PlayerIndex; chair: number; salt: string };
+```
+
+```ts
+interface MatchView {
+  turn: number; // 攻撃の通し番号（最大 maxTurns = 16）
+  round: number; // ceil(turn / 2)。攻守が 1 回ずつ攻撃すると 1 ラウンド
+  maxRounds: number; // ceil(maxTurns / 2) = 8
+  // sit 中に公開される守備側の選択。sit 確定（sittingChair）で null に戻る
+  previewChair: number | null;
+  // wiredChair は press / result まで含めない（wiredCommitted のみ公開）
+}
+```
+
+`select` は守備側が椅子を選んだ時点で送られ、攻撃側は FINAL THUNDER の確定前から
+`previewChair` を見られます。`wiredChair` は `press` まで秘密のままです。
+
 ### 4.5 キャプチャ（スクリーンショット / GIF）
 
 ゲーム側の実装は不要です。WVFS がゲーム HTML にキャプチャブリッジを注入します。

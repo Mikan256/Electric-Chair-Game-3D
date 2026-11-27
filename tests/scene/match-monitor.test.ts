@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG } from '@/game/types';
 import type { MatchView, MatchViewPlayer, TurnResult } from '@/game/types';
-import { monitorChairLabel, monitorHeadline, monitorPhaseLabel } from '@/scene/match-monitor';
+import {
+  monitorChairLabel,
+  monitorHeadline,
+  monitorPhaseLabel,
+  monitorRoundLabel,
+} from '@/scene/match-monitor';
 
 function player(name: string, points = 0, shocksDealt = 0): MatchViewPlayer {
   return { id: name.toLowerCase(), name, points, shocksDealt };
@@ -24,15 +29,20 @@ function turnResult(overrides: Partial<TurnResult> & Pick<TurnResult, 'turn'>): 
 }
 
 function makeView(overrides: Partial<MatchView> = {}): MatchView {
+  const turn = overrides.turn ?? 1;
   return {
     matchId: 'match-1',
     config: DEFAULT_CONFIG,
     players: [player('Alice'), player('Bob')],
     phase: 'set',
-    turn: 1,
+    turn,
+    // 攻撃→守備の 1 組で 1 ラウンド。
+    round: Math.ceil(turn / 2),
+    maxRounds: 8,
     attacker: 0,
     wiredCommitted: true,
     sittingChair: null,
+    previewChair: null,
     retiredChairs: [],
     availableChairs: [1, 2, 3],
     history: [],
@@ -84,6 +94,20 @@ describe('monitorHeadline', () => {
         }),
       ),
     ).toBe('FINISHED');
+  });
+});
+
+describe('monitorRoundLabel', () => {
+  it('攻撃+守備の 1 組を 1 ラウンドとして round / maxRounds を出す', () => {
+    expect(monitorRoundLabel(makeView({ turn: 1, round: 1 }))).toBe('ROUND 01 / 08');
+    expect(monitorRoundLabel(makeView({ turn: 3, round: 2 }))).toBe('ROUND 02 / 08');
+    expect(monitorRoundLabel(makeView({ turn: 16, round: 8 }))).toBe('ROUND 08 / 08');
+  });
+
+  it('TURN ではなく ROUND 表記を使う', () => {
+    const label = monitorRoundLabel(makeView({ turn: 5, round: 3 }));
+    expect(label).toContain('ROUND');
+    expect(label).not.toContain('TURN');
   });
 });
 

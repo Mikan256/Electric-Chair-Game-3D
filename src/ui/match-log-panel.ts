@@ -111,7 +111,7 @@ export class MatchLogPanel {
           </button>
         </header>
         <div class="match-log-panel__meta">
-          <span class="match-log-panel__turn" data-match-log-turn>TURN 01 / 08</span>
+          <span class="match-log-panel__turn" data-match-log-turn>ROUND 01 / 08</span>
           <span class="match-log-panel__phase" data-match-log-phase>SET / 仕掛け中</span>
         </div>
         <div class="match-log-panel__players" data-match-log-players></div>
@@ -220,7 +220,7 @@ export class MatchLogPanel {
     const phase = PHASE_INFO[view.phase];
     this.dialog.dataset.phase = view.phase;
 
-    this.turnElement.textContent = `TURN ${pad2(view.turn)} / ${pad2(view.config.maxTurns)}`;
+    this.turnElement.textContent = `ROUND ${pad2(view.round)} / ${pad2(view.maxRounds)}`;
     this.phaseElement.textContent = `${phase.en} / ${phase.jp}`;
 
     this.renderPlayers(view);

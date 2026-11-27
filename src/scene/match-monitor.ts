@@ -88,6 +88,11 @@ export function monitorChairLabel(view: MatchView): string | null {
   return view.sittingChair === null ? null : `CHAIR #${view.sittingChair}`;
 }
 
+/** 攻撃→守備の 1 組を 1 ラウンドとして数えるヘッダー表記。 */
+export function monitorRoundLabel(view: MatchView): string {
+  return `ROUND ${pad2(view.round)} / ${pad2(view.maxRounds)}`;
+}
+
 function pad2(value: number): string {
   return String(value).padStart(2, '0');
 }
@@ -354,11 +359,11 @@ export class MatchMonitor {
     context.textAlign = 'right';
     setFont(context, 17, '700');
     context.fillStyle = COLORS.textDim;
-    context.fillText('TURN', DESIGN_WIDTH - 28, 30);
+    context.fillText('ROUND', DESIGN_WIDTH - 28, 30);
 
     setFont(context, 44, '800');
     context.fillStyle = COLORS.gold;
-    context.fillText(`${pad2(view.turn)} / ${pad2(view.config.maxTurns)}`, DESIGN_WIDTH - 28, 71);
+    context.fillText(monitorRoundLabel(view), DESIGN_WIDTH - 28, 71);
 
     const chipText = `${phase.jp}  ${phase.en}`;
     setFont(context, 21, '800');

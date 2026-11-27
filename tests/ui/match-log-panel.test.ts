@@ -12,15 +12,20 @@ function player(name: string, points = 0, shocksDealt = 0): MatchViewPlayer {
 const ALL_CHAIRS = Array.from({ length: 12 }, (_, index) => index + 1);
 
 function makeView(overrides: Partial<MatchView> = {}): MatchView {
+  const turn = overrides.turn ?? 1;
   const base: MatchView = {
     matchId: 'match-log-panel-test',
-    config: { maxTurns: 8, targetPoints: 40, shocksToWin: 3, chairCount: 12 },
+    config: { maxTurns: 16, targetPoints: 40, shocksToWin: 3, chairCount: 12 },
     players: [player('Alice'), player('Bob')],
     phase: 'set',
-    turn: 1,
+    turn,
+    // 攻撃→守備の 1 組で 1 ラウンド。
+    round: Math.ceil(turn / 2),
+    maxRounds: 8,
     attacker: 0,
     wiredCommitted: false,
     sittingChair: null,
+    previewChair: null,
     retiredChairs: [],
     availableChairs: ALL_CHAIRS,
     history: [],
@@ -125,7 +130,7 @@ describe('MatchLogPanel', () => {
     expect(title.textContent).toContain('試合経過');
 
     expect(query<HTMLElement>(ui.element, '[data-match-log-turn]').textContent).toBe(
-      'TURN 02 / 08',
+      'ROUND 01 / 08',
     );
     expect(query<HTMLElement>(ui.element, '[data-match-log-phase]').textContent).toBe(
       'PRESS / ボタン待ち',
@@ -206,7 +211,7 @@ describe('MatchLogPanel', () => {
     expect(ui.isOpen).toBe(true);
     expect(ui.element.hidden).toBe(false);
     expect(query<HTMLElement>(ui.element, '[data-match-log-turn]').textContent).toBe(
-      'TURN 02 / 08',
+      'ROUND 01 / 08',
     );
 
     const rows = ui.element.querySelectorAll<HTMLElement>('[data-match-log-row]');

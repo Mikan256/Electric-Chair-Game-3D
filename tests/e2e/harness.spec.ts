@@ -30,8 +30,8 @@ test.describe('local Flaxia harness', () => {
     await expect(bob.locator('.panel h2')).toHaveText('ONLINE MATCH', { timeout: 30_000 });
 
     await page.locator('#force-start').click();
-    await expect(alice.locator('#hud-turn')).toHaveText('TURN 1 / 8', { timeout: 25_000 });
-    await expect(bob.locator('#hud-turn')).toHaveText('TURN 1 / 8', { timeout: 25_000 });
+    await expect(alice.locator('#hud-turn')).toHaveText('ROUND 1 / 8', { timeout: 25_000 });
+    await expect(bob.locator('#hud-turn')).toHaveText('ROUND 1 / 8', { timeout: 25_000 });
 
     type View = {
       attacker: number;
@@ -81,6 +81,12 @@ test.describe('local Flaxia harness', () => {
     await expect(defenderFrame.locator('#hud-phase')).toHaveText('椅子を選ぶ', { timeout: 15_000 });
     await defenderFrame.locator('#btn-grid').click();
     await defenderFrame.locator('.chair-btn[data-chair="8"]').click();
+
+    // まだ確定していない tentative な選択が攻撃側へ previewChair として届く。
+    await expect(attackerFrame.locator('body')).toContainText('相手は 8番を選択中', {
+      timeout: 10_000,
+    });
+
     await expect(defenderFrame.locator('#btn-confirm')).toBeEnabled();
     await defenderFrame.locator('#btn-confirm').click();
     await expect(defenderFrame.locator('[data-choice="keep"]')).toBeVisible({ timeout: 10_000 });

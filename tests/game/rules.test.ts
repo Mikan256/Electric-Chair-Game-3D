@@ -6,7 +6,9 @@ import {
   createMatch,
   createView,
   isChairLegal,
+  maxRoundsOfConfig,
   otherPlayer,
+  roundOfTurn,
 } from '@/game/rules';
 import type { ActionResult, MatchState } from '@/game/types';
 
@@ -140,6 +142,12 @@ describe('turn order', () => {
     expect(afterSet.lastResult).toBeNull();
     expect(JSON.stringify(afterSet)).not.toContain('wiredChair');
 
+    state = must(applyAction(state, { type: 'select', player: 1, chair: 3 }));
+    const afterSelect = createView(state, 0);
+    expect(afterSelect.previewChair).toBe(3);
+    expect(JSON.stringify(afterSelect)).not.toContain('wiredChair');
+    expect(JSON.stringify(afterSelect)).not.toContain('"wiredChair":9');
+
     state = must(applyAction(state, { type: 'sit', player: 1, chair: 3 }));
     const afterSit = createView(state, 1);
     expect(afterSit.phase).toBe('press');
@@ -150,6 +158,76 @@ describe('turn order', () => {
     state = must(applyAction(state, { type: 'press', player: 0, chair: 9, salt: SALT_A }));
     const afterPress = createView(state, 1);
     expect(afterPress.lastResult).toMatchObject({ wiredChair: 9, sittingChair: 3, hit: false });
+  });
+
+  it('counts two turns per round', () => {
+    let state = fresh();
+
+    expect(createView(state, 0).round).toBe(1);
+    expect(roundOfTurn(state.turn)).toBe(1);
+    expect(maxRoundsOfConfig(state.config)).toBe(8);
+    expect(createView(state, 0).maxRounds).toBe(8);
+
+    state = advance(playTurn(state, 1, 2));
+    expect(state.turn).toBe(2);
+    expect(createView(state, 0).round).toBe(1);
+    expect(roundOfTurn(state.turn)).toBe(1);
+
+    state = advance(playTurn(state, 3, 4, SALT_B));
+    expect(state.turn).toBe(3);
+    expect(createView(state, 0).round).toBe(2);
+    expect(roundOfTurn(state.turn)).toBe(2);
+  });
+
+  it('allows the defender to preview, update, clear, and confirm a chair', () => {
+    let state = must(applyAction(fresh(), {
+      type: 'set',
+      player: 0,
+      hash: commitmentHash(9, SALT_A),
+    }));
+    state = must(applyAction(state, { type: 'select', player: 1, chair: 5 }));
+    expect(state.phase).toBe('sit');
+    expect(state.previewChair).toBe(5);
+    expect(createView(state, 0).previewChair).toBe(5);
+
+    state = must(applyAction(state, { type: 'select', player: 1, chair: 7 }));
+    expect(state.previewChair).toBe(7);
+    state = must(applyAction(state, { type: 'select', player: 1, chair: null }));
+    expect(state.previewChair).toBeNull();
+
+    state = must(applyAction(state, { type: 'select', player: 1, chair: 5 }));
+    state = must(applyAction(state, { type: 'sit', player: 1, chair: 3 }));
+    expect(state.previewChair).toBeNull();
+    expect(state.phase).toBe('press');
+  });
+
+  it('rejects selection by the attacker, in the wrong phase, or of an unavailable chair', () => {
+    let state = fresh();
+    const beforeSet = applyAction(state, { type: 'select', player: 1, chair: 5 });
+    expect(beforeSet.ok).toBe(false);
+    if (!beforeSet.ok) expect(beforeSet.code).toBe('INVALID_PHASE');
+
+    state = must(applyAction(state, { type: 'set', player: 0, hash: commitmentHash(9, SALT_A) }));
+    const attackerSelects = applyAction(state, { type: 'select', player: 0, chair: 5 });
+    expect(attackerSelects.ok).toBe(false);
+    if (!attackerSelects.ok) expect(attackerSelects.code).toBe('INVALID_PLAYER');
+
+    const illegalChair = applyAction(state, { type: 'select', player: 1, chair: 13 });
+    expect(illegalChair.ok).toBe(false);
+    if (!illegalChair.ok) expect(illegalChair.code).toBe('INVALID_CHAIR');
+
+    state = playTurn(fresh(), 9, 12, SALT_A);
+    state = advance(state);
+    state = must(applyAction(state, { type: 'set', player: 1, hash: commitmentHash(1, SALT_B) }));
+    const retiredChair = applyAction(state, { type: 'select', player: 0, chair: 12 });
+    expect(retiredChair.ok).toBe(false);
+    if (!retiredChair.ok) expect(retiredChair.code).toBe('INVALID_CHAIR');
+
+    state = must(applyAction(state, { type: 'select', player: 0, chair: 5 }));
+    state = must(applyAction(state, { type: 'sit', player: 0, chair: 5 }));
+    const selectionAfterSit = applyAction(state, { type: 'select', player: 0, chair: 7 });
+    expect(selectionAfterSit.ok).toBe(false);
+    if (!selectionAfterSit.ok) expect(selectionAfterSit.code).toBe('INVALID_PHASE');
   });
 });
 

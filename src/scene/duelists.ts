@@ -751,7 +751,8 @@ export class DuelistSet {
 
     // 実データが来たらローカルのプレビューは役目を終える。残しておくと
     // 次の set フェーズ（sittingChair が null）で古い椅子に座り続けてしまう。
-    if (view.sittingChair !== null) this.previewChairValue = null;
+    // previewChair も公開された時点で実データとして扱う。
+    if (view.sittingChair !== null || view.previewChair !== null) this.previewChairValue = null;
 
     // press 中はカットシーンの尺が終わってもボタン待ちのホールドを続ける。
     if (view.phase === 'press') {
@@ -984,7 +985,7 @@ export class DuelistSet {
   /** view の実データとプレビューの優先順で守備側を配置する。 */
   private syncDefender(): void {
     const view = this.lastView;
-    const chair = view?.sittingChair ?? this.previewChairValue;
+    const chair = view?.sittingChair ?? view?.previewChair ?? this.previewChairValue;
     const retired = chair !== null && (view?.retiredChairs.includes(chair) ?? false);
     if (chair === null || retired) {
       this.defender.setVisible(false);

@@ -19,7 +19,7 @@ export type Phase = 'set' | 'sit' | 'press' | 'result' | 'finished';
 export type EndReason = 'points' | 'shocks' | 'turn-limit' | 'draw' | 'forfeit' | 'abandoned';
 
 export interface MatchConfig {
-  /** 1ターン = 攻撃側1人。最大8ターン（= 各4回ずつ攻撃）。 */
+  /** 1ターン = 攻撃側1人。最大16ターン（= 攻守が各8回ずつ攻撃 = 8ラウンド）。 */
   readonly maxTurns: number;
   /** 40ポイント先取。 */
   readonly targetPoints: number;
@@ -30,7 +30,7 @@ export interface MatchConfig {
 }
 
 export const DEFAULT_CONFIG: MatchConfig = {
-  maxTurns: 8,
+  maxTurns: 16,
   targetPoints: 40,
   shocksToWin: 3,
   chairCount: CHAIR_COUNT,
@@ -75,6 +75,8 @@ export interface MatchState {
   readonly phase: Phase;
   /** 現在のターン番号（1 始まり）。 */
   readonly turn: number;
+  /** 守備側が確認前に選択している公開プレビュー。 */
+  readonly previewChair: number | null;
   /** 電気イスを仕掛け、ボタンを押す側。 */
   readonly attacker: PlayerIndex;
   /** 攻撃側が仕掛けた椅子のコミットメント。press まで椅子は不明。 */
@@ -99,7 +101,8 @@ export interface MatchViewPlayer {
 
 /**
  * ネットワークで共有してよい公開ビュー。
- * wiredChair は result まで含めない。sittingChair は守備側が座った時点で公開。
+ * wiredChair は result まで含めない。previewChair は選択中の椅子を公開し、
+ * sittingChair は守備側が確定した時点で公開。
  */
 export interface MatchView {
   readonly matchId: string;
@@ -107,8 +110,13 @@ export interface MatchView {
   readonly players: readonly [MatchViewPlayer, MatchViewPlayer];
   readonly phase: Phase;
   readonly turn: number;
+  /** 2ターンごとのラウンド番号（1 始まり）。 */
+  readonly round: number;
+  /** 試合設定に基づく最大ラウンド数。 */
+  readonly maxRounds: number;
   readonly attacker: PlayerIndex;
   readonly wiredCommitted: boolean;
+  readonly previewChair: number | null;
   readonly sittingChair: number | null;
   readonly retiredChairs: readonly number[];
   readonly availableChairs: readonly number[];
@@ -123,6 +131,8 @@ export interface MatchView {
 export type MatchAction =
   /** 攻撃側が電気椅子を仕掛ける（ハッシュのみ）。 */
   | { readonly type: 'set'; readonly player: PlayerIndex; readonly hash: string }
+  /** 守備側が確定前の座る椅子を選択・解除する。 */
+  | { readonly type: 'select'; readonly player: PlayerIndex; readonly chair: number | null }
   /** 守備側が座る椅子を選ぶ。 */
   | { readonly type: 'sit'; readonly player: PlayerIndex; readonly chair: number }
   /** 攻撃側が前の台座のボタンを押す（仕掛けた椅子を公開）。 */

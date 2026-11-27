@@ -243,6 +243,115 @@ describe('MatchSession', () => {
     expect(lateChoice.ok).toBe(false);
   });
 
+  it('preview chair is shared with the attacker before confirmation', async () => {
+    const h = harness();
+    await flush();
+
+    expect(h.host.chooseChair(12)).toEqual({ ok: true });
+    await flush();
+    expect(h.guest.view?.phase).toBe('sit');
+
+    expect(h.guest.selectChair(5)).toEqual({ ok: true });
+    await flush(20);
+    for (const view of [h.host.view, h.guest.view]) {
+      expect(view?.phase).toBe('sit');
+      expect(view?.previewChair).toBe(5);
+      expect(view?.sittingChair).toBeNull();
+    }
+    // 攻撃側（host）の自分のビューにも仮選択が見える。
+    expect(h.host.view?.attacker).toBe(0);
+    expect(h.host.view?.previewChair).toBe(5);
+
+    expect(h.guest.selectChair(7)).toEqual({ ok: true });
+    await flush(20);
+    expect(h.host.view?.previewChair).toBe(7);
+    expect(h.guest.view?.previewChair).toBe(7);
+
+    expect(h.guest.selectChair(null)).toEqual({ ok: true });
+    await flush(20);
+    expect(h.host.view?.previewChair).toBeNull();
+    expect(h.guest.view?.previewChair).toBeNull();
+
+    expect(h.guest.selectChair(5)).toEqual({ ok: true });
+    await flush(20);
+    expect(h.host.view?.previewChair).toBe(5);
+
+    expect(h.guest.chooseChair(3)).toEqual({ ok: true });
+    await flush(20);
+    expect(h.host.view?.phase).toBe('press');
+    expect(h.guest.view?.phase).toBe('press');
+    expect(h.host.view?.sittingChair).toBe(3);
+    expect(h.guest.view?.sittingChair).toBe(3);
+    expect(h.host.view?.previewChair).toBeNull();
+    expect(h.guest.view?.previewChair).toBeNull();
+
+    const attackerView = h.host.view;
+    expect(JSON.stringify(attackerView)).not.toContain('wiredChair');
+    expect(attackerView?.lastResult).toBeNull();
+  });
+
+  it('attacker cannot select and out-of-phase select is rejected', async () => {
+    // set フェーズでは守備側でも select できない。
+    const early = harness();
+    await flush();
+    expect(early.guest.selectChair(4)).toMatchObject({
+      ok: false,
+      code: 'INVALID_PHASE',
+    });
+
+    const h = harness();
+    await flush();
+    expect(h.host.chooseChair(12)).toEqual({ ok: true });
+    await flush();
+    expect(h.guest.view?.phase).toBe('sit');
+
+    expect(h.host.selectChair(4)).toMatchObject({
+      ok: false,
+      code: 'INVALID_PLAYER',
+    });
+
+    expect(h.guest.selectChair(13)).toMatchObject({
+      ok: false,
+      code: 'INVALID_CHAIR',
+    });
+  });
+
+  it('round counts both attacks as one round', async () => {
+    const h = harness();
+    await flush();
+    expect(h.host.view?.round).toBe(1);
+    expect(h.host.view?.maxRounds).toBe(8);
+    expect(h.guest.view?.round).toBe(1);
+
+    // 1 ターン目（攻撃: host / 守備: guest）
+    expect(h.host.chooseChair(12)).toEqual({ ok: true });
+    await flush();
+    expect(h.guest.chooseChair(1)).toEqual({ ok: true });
+    await flush(20);
+    expect(h.host.pressButton()).toEqual({ ok: true });
+    await flush(20);
+    expect(h.host.view?.phase).toBe('result');
+    h.host.advance();
+    await flush(20);
+    expect(h.host.view?.turn).toBe(2);
+    expect(h.host.view?.round).toBe(1);
+    expect(h.guest.view?.round).toBe(1);
+
+    // 2 ターン目（攻撃: guest / 守備: host）でラウンドが進む。
+    expect(h.guest.chooseChair(9)).toEqual({ ok: true });
+    await flush();
+    expect(h.host.chooseChair(4)).toEqual({ ok: true });
+    await flush(20);
+    expect(h.guest.pressButton()).toEqual({ ok: true });
+    await flush(20);
+    expect(h.host.view?.phase).toBe('result');
+    h.host.advance();
+    await flush(20);
+    expect(h.host.view?.turn).toBe(3);
+    expect(h.host.view?.round).toBe(2);
+    expect(h.guest.view?.round).toBe(2);
+  });
+
   it('runs a complete bot-vs-bot match', async () => {
     const h = harness({ startingAttacker: 0 });
     await flush();
@@ -259,7 +368,7 @@ describe('MatchSession', () => {
     await flush(20);
     expect(h.host.view?.phase).toBe('finished');
     expect(h.host.view?.outcome).not.toBeNull();
-    expect(h.host.view?.history.length).toBeLessThanOrEqual(8);
+    expect(h.host.view?.history.length).toBeLessThanOrEqual(16);
     expect(h.guest.view?.phase).toBe('finished');
   });
 });

@@ -10,7 +10,7 @@ test.describe('stage camera', () => {
 
     await page.goto('/?attacker=0&botDelay=20&seed=e2e-stage');
     await page.locator('#btn-solo').click();
-    await expect(page.locator('#hud-turn')).toHaveText('TURN 1 / 8', { timeout: 20_000 });
+    await expect(page.locator('#hud-turn')).toHaveText('ROUND 1 / 8', { timeout: 20_000 });
 
     const before = await page.evaluate(() => {
       const stage = window.__stage;

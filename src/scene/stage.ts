@@ -672,6 +672,9 @@ export class Theater {
       if (chair.group.parent !== this.scene) this.scene.add(chair.group);
       if (view.sittingChair === chair.chair) {
         chair.setState('selected');
+      } else if (view.phase === 'sit' && view.previewChair === chair.chair) {
+        // 守備側が迷っている椅子を攻撃側にも見せる（wiredChair は出さない）。
+        chair.setState('selected');
       } else if (chair.chair === this.selected) {
         chair.setState('selected');
       } else if (view.phase === 'finished') {

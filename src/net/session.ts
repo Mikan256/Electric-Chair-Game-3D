@@ -44,6 +44,9 @@ export interface MatchSessionEvents {
 
 const DEFAULT_HEARTBEAT_MS = 2_000;
 
+type SelectClientAction = { readonly type: 'select'; readonly chair: number | null };
+type SessionClientAction = ClientAction | SelectClientAction;
+
 function isMatchView(value: unknown): value is MatchView {
   if (!value || typeof value !== 'object') return false;
   const view = value as Partial<MatchView>;
@@ -224,6 +227,40 @@ export class MatchSession {
     };
   }
 
+  /** 守備側の仮選択を公開する（座る椅子の確定前に変更・解除できる）。 */
+  selectChair(
+    chair: number | null,
+  ): { ok: true } | { ok: false; code: string; message: string } {
+    if (this.disposed) return { ok: false, code: 'CLOSED', message: 'セッションが終了しています' };
+    const view = this.currentView;
+    if (!view) {
+      return { ok: false, code: 'NOT_READY', message: 'まだ試合が始まっていません' };
+    }
+    if (view.phase !== 'sit') {
+      return { ok: false, code: 'INVALID_PHASE', message: '今は椅子を選べません' };
+    }
+    if (view.attacker === this.selfIndex) {
+      return { ok: false, code: 'INVALID_PLAYER', message: '守備側だけが椅子を選べます' };
+    }
+    if (
+      chair !== null &&
+      (!Number.isInteger(chair) ||
+        chair < 1 ||
+        chair > view.config.chairCount ||
+        !view.availableChairs.includes(chair))
+    ) {
+      return { ok: false, code: 'INVALID_CHAIR', message: 'その椅子は選べません' };
+    }
+
+    const action: SelectClientAction = { type: 'select', chair };
+    if (this.isHost) {
+      this.hostApply({ type: 'select', player: this.selfIndex, chair });
+    } else {
+      this.sendAction(action);
+    }
+    return { ok: true };
+  }
+
   /** 攻撃側が前方の台座のボタンを押す。 */
   pressButton(): { ok: true } | { ok: false; code: string; message: string } {
     if (this.disposed) return { ok: false, code: 'CLOSED', message: 'セッションが終了しています' };
@@ -291,9 +328,10 @@ export class MatchSession {
     this.transport.send(message);
   }
 
-  private sendAction(action: ClientAction): void {
+  private sendAction(action: SessionClientAction): void {
     if (!this.currentView) return;
-    this.send({
+    if (this.disposed) return;
+    this.transport.send({
       t: 'action',
       from: this.selfId,
       action,
@@ -343,7 +381,10 @@ export class MatchSession {
           return;
         }
         if (!this.currentView || this.currentView.phase !== raw.phase) return;
-        const action = this.fromClientAction(raw.action, 1);
+        const action = this.fromClientAction(
+          raw.action as SessionClientAction,
+          1,
+        );
         if (!action) {
           this.send({
             t: 'error',
@@ -378,12 +419,14 @@ export class MatchSession {
     }
   }
 
-  private fromClientAction(action: ClientAction, player: PlayerIndex): MatchAction | null {
+  private fromClientAction(action: SessionClientAction, player: PlayerIndex): MatchAction | null {
     switch (action.type) {
       case 'set':
         return { type: 'set', player, hash: action.hash };
       case 'sit':
         return { type: 'sit', player, chair: action.chair };
+      case 'select':
+        return { type: 'select', player, chair: action.chair };
       case 'press':
         return { type: 'press', player, chair: action.chair, salt: action.salt };
       case 'advance':

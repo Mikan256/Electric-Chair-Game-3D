@@ -46,6 +46,14 @@ export function getDefender(state: MatchState): PlayerIndex {
   return otherPlayer(state.attacker);
 }
 
+export function roundOfTurn(turn: number): number {
+  return Math.ceil(turn / 2);
+}
+
+export function maxRoundsOfConfig(config: Pick<MatchConfig, 'maxTurns'>): number {
+  return Math.ceil(config.maxTurns / 2);
+}
+
 export function availableChairs(state: {
   config: Pick<MatchConfig, 'chairCount'>;
   retiredChairs: readonly number[];
@@ -82,6 +90,7 @@ export function createMatch(options: CreateMatchOptions): MatchState {
     ],
     phase: 'set',
     turn: 1,
+    previewChair: null,
     attacker,
     wiredCommitment: null,
     sittingChair: null,
@@ -187,6 +196,7 @@ function nextTurn(state: MatchState): MatchState {
     turn: state.turn + 1,
     attacker: getDefender(state),
     wiredCommitment: null,
+    previewChair: null,
     sittingChair: null,
     wiredChair: null,
   });
@@ -244,8 +254,27 @@ export function applyAction(state: MatchState, action: MatchAction): ActionResul
       return {
         ok: true,
         state: bump(state, {
+          previewChair: null,
           sittingChair: action.chair,
           phase: 'press',
+        }),
+      };
+    }
+
+    case 'select': {
+      if (state.phase !== 'sit') {
+        return fail('INVALID_PHASE', `select できないフェーズです: ${state.phase}`);
+      }
+      if (action.player !== getDefender(state)) {
+        return fail('INVALID_PLAYER', '座る椅子を選べるのは守備側だけです');
+      }
+      if (action.chair !== null && !isChairLegal(state, action.chair)) {
+        return fail('INVALID_CHAIR', 'その椅子には座れません');
+      }
+      return {
+        ok: true,
+        state: bump(state, {
+          previewChair: action.chair,
         }),
       };
     }
@@ -321,8 +350,11 @@ export function createView(state: MatchState, you: PlayerIndex): MatchView {
     ],
     phase: state.phase,
     turn: state.turn,
+    round: roundOfTurn(state.turn),
+    maxRounds: maxRoundsOfConfig(state.config),
     attacker: state.attacker,
     wiredCommitted: state.wiredCommitment !== null,
+    previewChair: state.previewChair,
     sittingChair: state.sittingChair,
     retiredChairs: state.retiredChairs,
     availableChairs: availableChairs(state),
